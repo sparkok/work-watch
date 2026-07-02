@@ -80,11 +80,9 @@ func Run(args []string) int {
 	// Otherwise treat as task name (direct run)
 	return runTaskMode(subcommand)
 }
-
 // ===================== Interactive Menu =====================
 
 func runMenuMode() int {
-	// track async execution
 	var asyncWg sync.WaitGroup
 
 	for {
@@ -96,9 +94,7 @@ func runMenuMode() int {
 		fmt.Println(" 5. 退出")
 		fmt.Print("\n请选择 (1-5): ")
 
-		var input string
-		fmt.Scanln(&input)
-		input = strings.TrimSpace(input)
+		input := task.ReadLine()
 
 		switch input {
 		case "1", "配置":
@@ -119,8 +115,6 @@ func runMenuMode() int {
 		}
 	}
 }
-
-// menuConfig: pick a task to reconfigure, or create new one
 func menuConfig() {
 	tasks, _ := task.ListTasks()
 	if len(tasks) > 0 {
@@ -131,16 +125,14 @@ func menuConfig() {
 		fmt.Printf("  %d. 创建新任务\n", len(tasks)+1)
 		fmt.Print("\n选择任务进行配置, 或创建新任务: ")
 
-		var input string
-		fmt.Scanln(&input)
-		input = strings.TrimSpace(input)
+		input := task.ReadLine()
 
 		if n, err := strconv.Atoi(input); err == nil {
 			if n >= 1 && n <= len(tasks) {
 				runConfigMode(tasks[n-1])
 				return
 			} else if n == len(tasks)+1 {
-				// create new — fall through
+				// fall through to create
 			}
 		}
 		for _, t := range tasks {
@@ -151,17 +143,12 @@ func menuConfig() {
 		}
 	}
 
-	// No tasks or user chose to create
 	fmt.Print("\n输入新任务名称: ")
-	var name string
-	fmt.Scanln(&name)
-	name = strings.TrimSpace(name)
+	name := task.ReadLine()
 	if name != "" {
 		runTaskMode(name)
 	}
 }
-
-// menuRun: pick a task to execute asynchronously
 func menuRun(wg *sync.WaitGroup) {
 	tasks, err := task.ListTasks()
 	if err != nil || len(tasks) == 0 {
@@ -176,27 +163,12 @@ func menuRun(wg *sync.WaitGroup) {
 	}
 
 	fmt.Print("\n选择任务: ")
-	var input string
-	fmt.Scanln(&input)
-	input = strings.TrimSpace(input)
-
-	var taskName string
-	if n, err := strconv.Atoi(input); err == nil && n >= 1 && n <= len(tasks) {
-		taskName = tasks[n-1]
-	} else {
-		for _, t := range tasks {
-			if strings.EqualFold(t, input) {
-				taskName = t
-				break
-			}
-		}
-	}
+	taskName := chooseTask(tasks)
 	if taskName == "" {
 		fmt.Println("无效选择。")
 		return
 	}
 
-	// Check health before starting
 	taskDir := task.TaskDir(taskName)
 	cfg, err := task.LoadConfig(taskDir)
 	if err != nil {
@@ -208,7 +180,6 @@ func menuRun(wg *sync.WaitGroup) {
 		return
 	}
 
-	// Run async
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -217,7 +188,6 @@ func menuRun(wg *sync.WaitGroup) {
 		ctx, cancel := context.WithTimeout(context.Background(), 300*time.Second)
 		defer cancel()
 
-		// Handle Ctrl+C
 		sigCh := make(chan os.Signal, 1)
 		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 		go func() {
@@ -249,7 +219,19 @@ func menuRun(wg *sync.WaitGroup) {
 	}()
 }
 
-// menuExport: pick task and format, then export
+func chooseTask(tasks []string) string {
+	input := task.ReadLine()
+	if n, err := strconv.Atoi(input); err == nil && n >= 1 && n <= len(tasks) {
+		return tasks[n-1]
+	}
+	for _, t := range tasks {
+		if strings.EqualFold(t, input) {
+			return t
+		}
+	}
+	return ""
+}
+
 func menuExport() {
 	tasks, err := task.ListTasks()
 	if err != nil || len(tasks) == 0 {
@@ -269,21 +251,7 @@ func menuExport() {
 	}
 
 	fmt.Print("\n选择任务: ")
-	var input string
-	fmt.Scanln(&input)
-	input = strings.TrimSpace(input)
-
-	var taskName string
-	if n, err := strconv.Atoi(input); err == nil && n >= 1 && n <= len(tasks) {
-		taskName = tasks[n-1]
-	} else {
-		for _, t := range tasks {
-			if strings.EqualFold(t, input) {
-				taskName = t
-				break
-			}
-		}
-	}
+	taskName := chooseTask(tasks)
 	if taskName == "" {
 		fmt.Println("无效选择。")
 		return
@@ -294,11 +262,9 @@ func menuExport() {
 	fmt.Println("  2. 报告       — 简明报告，辅助决策")
 	fmt.Println("  3. 详细交互   — 完整交互过程，方便阅读")
 	fmt.Print("\n请选择 (1-3): ")
-	fmt.Scanln(&input)
-	input = strings.TrimSpace(input)
 
 	format := "json"
-	switch input {
+	switch task.ReadLine() {
 	case "2", "报告":
 		format = "report"
 	case "3", "详细交互":

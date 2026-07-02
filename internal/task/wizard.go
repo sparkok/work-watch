@@ -1,13 +1,11 @@
 package task
 
 import (
-	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 )
-
 
 // ensureGlobalConfig checks if config.yaml exists; if not, interactively creates it.
 func ensureGlobalConfig() error {
@@ -16,13 +14,6 @@ func ensureGlobalConfig() error {
 	}
 
 	fmt.Println("No global config.yaml found. Let's set up PilotDeck connection.")
-	scanner := bufio.NewScanner(os.Stdin)
-
-	reader := func(prompt string) string {
-		fmt.Print(prompt)
-		scanner.Scan()
-		return strings.TrimSpace(scanner.Text())
-	}
 
 	defaultProjectPath := os.Getenv(envProjectPath)
 	if defaultProjectPath == "" {
@@ -30,12 +21,14 @@ func ensureGlobalConfig() error {
 			defaultProjectPath = cwd
 		}
 	}
-	projectPath := reader(fmt.Sprintf("Project path [%s]: ", defaultProjectPath))
+	fmt.Printf("Project path [%s]: ", defaultProjectPath)
+	projectPath := ReadLine()
 	if projectPath == "" {
 		projectPath = defaultProjectPath
 	}
 
-	apiKey := reader("API key (optional): ")
+	fmt.Print("API key (optional): ")
+	apiKey := ReadLine()
 	if apiKey == "" {
 		fmt.Println("  (no API key will be sent)")
 	}
@@ -49,7 +42,8 @@ func ensureGlobalConfig() error {
 	if defaultBase == "" {
 		defaultBase = "http://localhost:3001"
 	}
-	baseURL := reader(fmt.Sprintf("Base URL [%s]: ", defaultBase))
+	fmt.Printf("Base URL [%s]: ", defaultBase)
+	baseURL := ReadLine()
 	if baseURL == "" {
 		baseURL = defaultBase
 	}
@@ -66,33 +60,22 @@ func ensureGlobalConfig() error {
 
 // CreateTaskWizard interactively creates a new task directory and task-level config.
 func CreateTaskWizard(taskName string) error {
-	// First ensure global config exists
 	if err := ensureGlobalConfig(); err != nil {
 		return fmt.Errorf("global config: %w", err)
 	}
 
 	taskDir := TaskDir(taskName)
-
-	// Create directory structure
 	for _, dir := range []string{taskDir, filepath.Join(taskDir, jobsDirName), filepath.Join(taskDir, logsDirName)} {
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			return fmt.Errorf("create directory %s: %w", dir, err)
 		}
 	}
 
-	scanner := bufio.NewScanner(os.Stdin)
-
-	reader := func(prompt string) string {
-		fmt.Print(prompt)
-		scanner.Scan()
-		return strings.TrimSpace(scanner.Text())
-	}
-
-	debugStr := reader("Debug mode? (y/N): ")
+	fmt.Print("Debug mode? (y/N): ")
+	debugStr := ReadLine()
 	debug := strings.EqualFold(debugStr, "y") || strings.EqualFold(debugStr, "yes")
 
 	cfg := &TaskConfig{Debug: debug}
-
 	if err := SaveConfig(taskDir, cfg); err != nil {
 		return err
 	}
@@ -114,11 +97,8 @@ func ReconfigureWizard(taskName string) error {
 		return fmt.Errorf("load existing config: %w", err)
 	}
 
-	scanner := bufio.NewScanner(os.Stdin)
-
 	fmt.Printf("Debug mode [%v] (y/N): ", cfg.Debug)
-	scanner.Scan()
-	debugStr := strings.TrimSpace(scanner.Text())
+	debugStr := ReadLine()
 	if debugStr != "" {
 		cfg.Debug = strings.EqualFold(debugStr, "y") || strings.EqualFold(debugStr, "yes")
 	}
