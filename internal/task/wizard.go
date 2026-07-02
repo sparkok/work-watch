@@ -18,7 +18,7 @@ func ensureGlobalConfig() error {
 	defaultProjectPath := os.Getenv(envProjectPath)
 	if defaultProjectPath == "" {
 		if cwd, err := os.Getwd(); err == nil {
-			defaultProjectPath = cwd
+			defaultProjectPath = filepath.Join(cwd, "working")
 		}
 	}
 	fmt.Printf("Project path [%s]: ", defaultProjectPath)

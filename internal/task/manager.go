@@ -167,3 +167,30 @@ func MarkConfirmed(taskDir string) error {
 	s.Confirmed = true
 	return saveStatus(taskDir, s)
 }
+
+// ResetTask reverts a task to its initial unexecuted state:
+// deletes status file, clears session_id in task.yaml, removes logs/.
+func ResetTask(taskDir string) error {
+	// Remove status file
+	if err := os.Remove(statusPath(taskDir)); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove status: %w", err)
+	}
+
+	// Clear session_id in task.yaml
+	cfg, err := LoadConfig(taskDir)
+	if err != nil {
+		return fmt.Errorf("load config: %w", err)
+	}
+	cfg.SessionID = ""
+	if err := SaveConfig(taskDir, cfg); err != nil {
+		return fmt.Errorf("save config: %w", err)
+	}
+
+	// Remove logs directory
+	logDir := filepath.Join(taskDir, logsDirName)
+	if err := os.RemoveAll(logDir); err != nil {
+		return fmt.Errorf("remove logs: %w", err)
+	}
+
+	return nil
+}

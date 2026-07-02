@@ -84,6 +84,14 @@ func Run(args []string) int {
 		return runStatusMode()
 	}
 
+	if subcommand == "reset" {
+		if len(args) < 2 {
+			fmt.Fprintln(os.Stderr, "用法: work-watch reset <任务名>")
+			return 1
+		}
+		return runResetMode(args[1])
+	}
+
 	// Otherwise treat as task name (direct run)
 	return runTaskMode(subcommand)
 }
@@ -99,8 +107,9 @@ func runMenuMode() int {
 		fmt.Println(" 2. 执行    — 执行任务 (异步)")
 		fmt.Println(" 3. 结果导出 — 导出任务会话记录")
 		fmt.Println(" 4. 状态    — 查看任务状态")
-		fmt.Println(" 5. 退出")
-		fmt.Print("\n请选择 (1-5): ")
+		fmt.Println(" 5. 重置    — 将任务恢复为初始未执行状态")
+		fmt.Println(" 6. 退出")
+		fmt.Print("\n请选择 (1-6): ")
 
 		input := task.ReadLine()
 
@@ -113,7 +122,9 @@ func runMenuMode() int {
 			menuExport()
 		case "4", "状态":
 			menuStatus()
-		case "5", "退出":
+		case "5", "重置":
+			menuReset()
+		case "6", "退出":
 			fmt.Println("等待异步任务完成...")
 			asyncWg.Wait()
 			fmt.Println("再见!")
@@ -305,6 +316,29 @@ func menuStatus() {
 	runStatusMode()
 }
 
+func menuReset() {
+	tasks, err := task.ListTasks()
+	if err != nil || len(tasks) == 0 {
+		fmt.Println("没有可用的任务。")
+		return
+	}
+
+	fmt.Println("\n--- 选择要重置的任务 ---")
+	for i, t := range tasks {
+		statusLine := taskStatusLine(t)
+		fmt.Printf("  %d. %s %s\n", i+1, t, statusLine)
+	}
+
+	fmt.Print("\n选择任务: ")
+	taskName := chooseTask(tasks)
+	if taskName == "" {
+		fmt.Println("无效选择。")
+		return
+	}
+
+	runResetMode(taskName)
+}
+
 // ===================== Task Execution =====================
 
 func runTaskMode(taskName string) int {
@@ -478,6 +512,32 @@ func runConfigMode(taskName string) int {
 		fmt.Fprintf(os.Stderr, "Config error: %v\n", err)
 		return 1
 	}
+	return 0
+}
+
+// ===================== Reset Mode =====================
+
+func runResetMode(taskName string) int {
+	taskDir := task.TaskDir(taskName)
+	if _, err := os.Stat(taskDir); os.IsNotExist(err) {
+		fmt.Fprintf(os.Stderr, "任务 %q 不存在。\n", taskName)
+		return 1
+	}
+
+	fmt.Printf("确定要重置任务 %q 吗？这将清除执行状态、日志和会话信息，但保留 job 定义文件。\n", taskName)
+	fmt.Print("输入 yes 确认重置: ")
+	confirm := task.ReadLine()
+	if confirm != "yes" {
+		fmt.Println("已取消重置。")
+		return 0
+	}
+
+	if err := task.ResetTask(taskDir); err != nil {
+		fmt.Fprintf(os.Stderr, "重置失败: %v\n", err)
+		return 1
+	}
+
+	fmt.Printf("✓ 任务 %q 已重置为初始状态。\n", taskName)
 	return 0
 }
 

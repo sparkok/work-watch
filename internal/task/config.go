@@ -86,9 +86,16 @@ func applyDefaults(cfg *TaskConfig) {
 			cfg.PilotDeck.ProjectPath = p
 		} else {
 			if cwd, err := os.Getwd(); err == nil {
-				cfg.PilotDeck.ProjectPath = cwd
+				cfg.PilotDeck.ProjectPath = filepath.Join(cwd, "working")
 			}
 		}
+	} else if cwd, err := os.Getwd(); err == nil && cfg.PilotDeck.ProjectPath == cwd {
+		// Correct bare cwd (old default) to <cwd>/working
+		cfg.PilotDeck.ProjectPath = filepath.Join(cwd, "working")
+	}
+	// Ensure working directory exists
+	if cfg.PilotDeck.ProjectPath != "" {
+		_ = os.MkdirAll(cfg.PilotDeck.ProjectPath, 0o755)
 	}
 	if cfg.PilotDeck.RetryAttempts <= 0 {
 		cfg.PilotDeck.RetryAttempts = 3
@@ -223,13 +230,10 @@ func readPilotDeckConfig() *TaskConfig {
 	}
 
 	cfg := &TaskConfig{}
-	if pdCfg.WebUI.Runtime.ServerPort > 0 {
-		cfg.PilotDeck.BaseURL = fmt.Sprintf("http://localhost:%d", pdCfg.WebUI.Runtime.ServerPort)
-	}
-
-	// Set project_path to current working directory
+	// Set project_path to <cwd>/working
 	if cwd, err := os.Getwd(); err == nil {
-		cfg.PilotDeck.ProjectPath = cwd
+		cfg.PilotDeck.ProjectPath = filepath.Join(cwd, "working")
+		_ = os.MkdirAll(cfg.PilotDeck.ProjectPath, 0o755)
 	}
 
 	// Read API key from auth.db (SQLite) — NOT from server-token (gateway WebSocket auth)
@@ -255,13 +259,15 @@ func InitGlobalConfig() error {
 		return nil
 	}
 
-	// Merge with existing config: use discovered key, but preserve existing project_path
-	// if the user set one manually
+	// Merge with existing config: preserve user-set project_path, but replace old bare-cwd default
 	if raw, err := os.ReadFile(GlobalConfigPath()); err == nil {
 		var existing TaskConfig
 		if err := yaml.Unmarshal(raw, &existing); err == nil {
 			if existing.PilotDeck.ProjectPath != "" {
-				pdCfg.PilotDeck.ProjectPath = existing.PilotDeck.ProjectPath
+				cwd, _ := os.Getwd()
+				if cwd == "" || existing.PilotDeck.ProjectPath != cwd {
+					pdCfg.PilotDeck.ProjectPath = existing.PilotDeck.ProjectPath
+				}
 			}
 		}
 	}
@@ -279,12 +285,15 @@ func RefreshGlobalConfigFromPilotDeck() error {
 		return fmt.Errorf("未找到 PilotDeck 配置")
 	}
 
-	// Merge with existing config to preserve project_path if set
+	// Merge with existing config: preserve user-set project_path, but replace old bare-cwd default
 	if raw, err := os.ReadFile(GlobalConfigPath()); err == nil {
 		var existing TaskConfig
 		if err := yaml.Unmarshal(raw, &existing); err == nil {
 			if existing.PilotDeck.ProjectPath != "" {
-				pdCfg.PilotDeck.ProjectPath = existing.PilotDeck.ProjectPath
+				cwd, _ := os.Getwd()
+				if cwd == "" || existing.PilotDeck.ProjectPath != cwd {
+					pdCfg.PilotDeck.ProjectPath = existing.PilotDeck.ProjectPath
+				}
 			}
 		}
 	}
