@@ -1,13 +1,15 @@
 package task
 
 import (
-	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 )
+
 const (
 	statusFileName = "status"
 	jobsDirName    = "jobs"
@@ -61,24 +63,53 @@ func ListJobs(taskDir string) ([]string, error) {
 	return jobs, nil
 }
 
-// CompletedJobs returns the set of completed job identifiers (name without .txt).
-func CompletedJobs(taskDir string) (map[string]bool, error) {
-	raw, err := os.ReadFile(filepath.Join(taskDir, statusFileName))
+// StatusData is the YAML structure for the task status file.
+type StatusData struct {
+	Completed map[string]string `yaml:"completed"`
+	Confirmed bool              `yaml:"confirmed"`
+}
+
+func statusPath(taskDir string) string {
+	return filepath.Join(taskDir, statusFileName)
+}
+
+func loadStatus(taskDir string) (*StatusData, error) {
+	raw, err := os.ReadFile(statusPath(taskDir))
 	if err != nil {
 		if os.IsNotExist(err) {
-			return map[string]bool{}, nil
+			return &StatusData{Completed: map[string]string{}}, nil
 		}
 		return nil, fmt.Errorf("read status: %w", err)
 	}
-	completed := map[string]bool{}
-	sc := bufio.NewScanner(strings.NewReader(string(raw)))
-	for sc.Scan() {
-		line := strings.TrimSpace(sc.Text())
-		if line != "" {
-			completed[line] = true
-		}
+	var s StatusData
+	if err := yaml.Unmarshal(raw, &s); err != nil {
+		return nil, fmt.Errorf("parse status: %w", err)
 	}
-	return completed, sc.Err()
+	if s.Completed == nil {
+		s.Completed = map[string]string{}
+	}
+	return &s, nil
+}
+
+func saveStatus(taskDir string, s *StatusData) error {
+	raw, err := yaml.Marshal(s)
+	if err != nil {
+		return fmt.Errorf("marshal status: %w", err)
+	}
+	return os.WriteFile(statusPath(taskDir), raw, 0o644)
+}
+
+// CompletedJobs returns the set of completed job identifiers (name without .txt).
+func CompletedJobs(taskDir string) (map[string]bool, error) {
+	s, err := loadStatus(taskDir)
+	if err != nil {
+		return nil, err
+	}
+	result := map[string]bool{}
+	for k := range s.Completed {
+		result[k] = true
+	}
+	return result, nil
 }
 
 // jobKey returns the job identifier stored in status (filename without extension).
@@ -108,16 +139,31 @@ func NextIncomplete(taskDir string) (string, error) {
 	return "", nil
 }
 
-// MarkCompleted appends a job identifier to the status file.
-func MarkCompleted(taskDir, jobName string) error {
-	f, err := os.OpenFile(filepath.Join(taskDir, statusFileName),
-		os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+// MarkCompleted records a job as completed with its session ID in the YAML status file.
+func MarkCompleted(taskDir, jobName, sessionID string) error {
+	s, err := loadStatus(taskDir)
 	if err != nil {
-		return fmt.Errorf("open status: %w", err)
+		return err
 	}
-	defer f.Close()
-	if _, err := fmt.Fprintln(f, jobKey(jobName)); err != nil {
-		return fmt.Errorf("write status: %w", err)
+	s.Completed[jobKey(jobName)] = sessionID
+	return saveStatus(taskDir, s)
+}
+
+// IsConfirmed checks whether the task has been confirmed with PilotDeck.
+func IsConfirmed(taskDir string) (bool, error) {
+	s, err := loadStatus(taskDir)
+	if err != nil {
+		return false, err
 	}
-	return nil
+	return s.Confirmed, nil
+}
+
+// MarkConfirmed marks the task as confirmed in the YAML status file.
+func MarkConfirmed(taskDir string) error {
+	s, err := loadStatus(taskDir)
+	if err != nil {
+		return err
+	}
+	s.Confirmed = true
+	return saveStatus(taskDir, s)
 }

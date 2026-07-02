@@ -43,6 +43,11 @@ func Run(args []string) int {
 		task.AppDir = cwd
 	}
 
+	// Initialize/refresh global config from PilotDeck settings
+	if err := task.InitGlobalConfig(); err != nil {
+		fmt.Fprintf(os.Stderr, "自动初始化配置失败: %v\n", err)
+	}
+
 	startupHealthCheck()
 
 	if len(args) == 0 {
@@ -173,7 +178,23 @@ func menuRun(wg *sync.WaitGroup) {
 		return
 	}
 
+	// Check if task config exists — if not, enter wizard
 	taskDir := task.TaskDir(taskName)
+	if _, err := os.Stat(task.ConfigPath(taskDir)); os.IsNotExist(err) {
+		fmt.Printf("Task %q needs configuration. Starting wizard...\n", taskName)
+		if err := task.CreateTaskWizard(taskName); err != nil {
+			fmt.Fprintf(os.Stderr, "Wizard error: %v\n", err)
+			return
+		}
+		taskDir = task.TaskDir(taskName)
+
+		// Refresh global config from PilotDeck since user is starting fresh
+		if err := task.RefreshGlobalConfigFromPilotDeck(); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: 无法从 PilotDeck 刷新配置: %v\n", err)
+			fmt.Fprintln(os.Stderr, "请检查 PilotDeck 配置文件 (~/.pilotdeck/pilotdeck.yaml) 是否存在。")
+		}
+	}
+
 	cfg, err := task.LoadConfig(taskDir)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "配置错误: %v\n", err)
@@ -296,6 +317,12 @@ func runTaskMode(taskName string) int {
 			return 1
 		}
 		taskDir = task.TaskDir(taskName)
+
+		// Refresh global config from PilotDeck since the user is starting fresh
+		if err := task.RefreshGlobalConfigFromPilotDeck(); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: 无法从 PilotDeck 刷新配置: %v\n", err)
+			fmt.Fprintln(os.Stderr, "请检查 PilotDeck 配置文件 (~/.pilotdeck/pilotdeck.yaml) 是否存在。")
+		}
 	}
 
 	cfg, err := task.LoadConfig(taskDir)
@@ -342,6 +369,16 @@ func runTaskMode(taskName string) int {
 
 	fmt.Printf("\nTask completed in %s.\n", elapsed.Round(time.Second))
 
+	// Check if already confirmed in a previous run
+	alreadyConfirmed, checkErr := task.IsConfirmed(taskDir)
+	if checkErr != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to check confirmation status: %v\n", checkErr)
+	}
+	if alreadyConfirmed {
+		fmt.Println("任务已被确认过，跳过确认步骤。")
+		return 0
+	}
+
 	// ===== Post-task confirmation with PilotDeck =====
 	fmt.Println("正在向 PilotDeck 确认任务结果...")
 
@@ -357,6 +394,7 @@ func runTaskMode(taskName string) int {
 		return 1
 	}
 	if confirmed {
+		_ = task.MarkConfirmed(taskDir)
 		fmt.Println("✅ PilotDeck 确认: 任务成功完成。")
 		return 0
 	}
@@ -699,6 +737,12 @@ func runStatusMode() int {
 
 func taskStatusLine(taskName string) string {
 	taskDir := task.TaskDir(taskName)
+
+	// Check if task config file exists
+	if _, err := os.Stat(task.ConfigPath(taskDir)); os.IsNotExist(err) {
+		return "(未配置)"
+	}
+
 	cfg, err := task.LoadConfig(taskDir)
 	if err != nil {
 		return "(配置错误: " + err.Error() + ")"

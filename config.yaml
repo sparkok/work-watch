@@ -1,4 +1,5 @@
 pilotdeck:
-  base_url: http://localhost:3001
-  api_key: ck_9cea41f99fe9c71ad60f385f159c197da9eec72b14fcaee3a7ba464205f9a063
-  project_path: E:/study/ai/PilotDeck
+    base_url: http://localhost:3001
+    api_key: ck_9cea41f99fe9c71ad60f385f159c197da9eec72b14fcaee3a7ba464205f9a063
+    project_path: E:\study\ai\PilotDeck\work-watch
+debug: false

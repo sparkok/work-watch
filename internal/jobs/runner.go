@@ -96,7 +96,7 @@ func RunTask(ctx context.Context, opts *RunOptions) error {
 		_ = writeJobLog(opts.TaskDir, jobName, string(msg), resp, "", messagesJSON)
 
 		// Mark completed
-		if err := task.MarkCompleted(opts.TaskDir, jobName); err != nil {
+		if err := task.MarkCompleted(opts.TaskDir, jobName, sessionID); err != nil {
 			return fmt.Errorf("mark completed %s: %w", jobName, err)
 		}
 
@@ -111,7 +111,7 @@ func RunTask(ctx context.Context, opts *RunOptions) error {
 // messagesJSON is the session conversation fetched via GET /api/sessions/.../messages (may be nil).
 func writeJobLog(taskDir, jobName, msg string, resp *pilotdeck.AgentResponse, errMsg string, messagesJSON []byte) error {
 	logDir := filepath.Join(taskDir, "logs")
-	if err := os.MkdirAll(logDir, 0755); err != nil {
+	if err := os.MkdirAll(logDir, 0o755); err != nil {
 		return err
 	}
 
@@ -145,7 +145,7 @@ POST /api/agent
 %s
 %s`, reqJSON, respSection)
 
-	return os.WriteFile(logPath, []byte(content), 0644)
+	return os.WriteFile(logPath, []byte(content), 0o644)
 }
 
 func jobKey(jobName string) string {

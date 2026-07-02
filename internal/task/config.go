@@ -1,12 +1,14 @@
 package task
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 
 	"gopkg.in/yaml.v3"
+	_ "modernc.org/sqlite"
 )
 
 const (
@@ -132,7 +134,7 @@ func SaveConfig(taskDir string, cfg *TaskConfig) error {
 	if err != nil {
 		return fmt.Errorf("marshal task config: %w", err)
 	}
-	if err := os.WriteFile(ConfigPath(taskDir), raw, 0644); err != nil {
+	if err := os.WriteFile(ConfigPath(taskDir), raw, 0o644); err != nil {
 		return fmt.Errorf("write task config: %w", err)
 	}
 	return nil
@@ -144,7 +146,7 @@ func SaveGlobalConfig(cfg *TaskConfig) error {
 	if err != nil {
 		return fmt.Errorf("marshal app config: %w", err)
 	}
-	if err := os.WriteFile(GlobalConfigPath(), raw, 0644); err != nil {
+	if err := os.WriteFile(GlobalConfigPath(), raw, 0o644); err != nil {
 		return fmt.Errorf("write app config: %w", err)
 	}
 	return nil
@@ -172,4 +174,111 @@ func SaveSessionID(taskDir, sessionID string) error {
 func HasGlobalConfig() bool {
 	_, err := os.Stat(GlobalConfigPath())
 	return err == nil
+}
+
+// pilotDeckHome returns the path to the PilotDeck configuration directory.
+func pilotDeckHome() string {
+	if h := os.Getenv("PILOT_HOME"); h != "" {
+		return h
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		return filepath.Join(home, ".pilotdeck")
+	}
+	return ""
+}
+
+// readPilotDeckConfig reads PilotDeck's config files and returns a TaskConfig
+// with auto-discovered base_url and api_key. Returns nil if PilotDeck is not found.
+func readPilotDeckConfig() *TaskConfig {
+	pdHome := pilotDeckHome()
+	if pdHome == "" {
+		return nil
+	}
+
+	pdYAML := filepath.Join(pdHome, "pilotdeck.yaml")
+	raw, err := os.ReadFile(pdYAML)
+	if err != nil {
+		return nil
+	}
+
+	var pdCfg struct {
+		WebUI struct {
+			Runtime struct {
+				ServerPort int `yaml:"serverPort"`
+			} `yaml:"runtime"`
+		} `yaml:"webui"`
+	}
+	if err := yaml.Unmarshal(raw, &pdCfg); err != nil {
+		return nil
+	}
+
+	cfg := &TaskConfig{}
+	if pdCfg.WebUI.Runtime.ServerPort > 0 {
+		cfg.PilotDeck.BaseURL = fmt.Sprintf("http://localhost:%d", pdCfg.WebUI.Runtime.ServerPort)
+	}
+
+	// Set project_path to current working directory
+	if cwd, err := os.Getwd(); err == nil {
+		cfg.PilotDeck.ProjectPath = cwd
+	}
+
+	// Read API key from auth.db (SQLite) — NOT from server-token (gateway WebSocket auth)
+	dbPath := filepath.Join(pdHome, "auth.db")
+	if db, err := sql.Open("sqlite", dbPath); err == nil {
+		var apiKey string
+		if err := db.QueryRow("SELECT api_key FROM api_keys WHERE is_active = 1 ORDER BY last_used DESC LIMIT 1").Scan(&apiKey); err == nil {
+			cfg.PilotDeck.APIKey = apiKey
+		}
+		db.Close()
+	}
+	return cfg
+}
+
+// InitGlobalConfig discovers PilotDeck settings and populates/refreshes config.yaml.
+// Always runs at startup to ensure latest API key from auth.db is used.
+func InitGlobalConfig() error {
+	pdCfg := readPilotDeckConfig()
+	if pdCfg == nil {
+		if !HasGlobalConfig() {
+			fmt.Println("未检测到 PilotDeck 配置，跳过自动初始化。")
+		}
+		return nil
+	}
+
+	// Merge with existing config: use discovered key, but preserve existing project_path
+	// if the user set one manually
+	if raw, err := os.ReadFile(GlobalConfigPath()); err == nil {
+		var existing TaskConfig
+		if err := yaml.Unmarshal(raw, &existing); err == nil {
+			if existing.PilotDeck.ProjectPath != "" {
+				pdCfg.PilotDeck.ProjectPath = existing.PilotDeck.ProjectPath
+			}
+		}
+	}
+
+	fmt.Printf("检测到 PilotDeck 配置 (端口: %s)，正在自动生成 %s...\n",
+		pdCfg.PilotDeck.BaseURL, GlobalConfigFileName)
+	return SaveGlobalConfig(pdCfg)
+}
+
+// RefreshGlobalConfigFromPilotDeck re-reads PilotDeck config files and updates
+// the global config.yaml with fresh values. Unlike InitGlobalConfig, it always runs.
+func RefreshGlobalConfigFromPilotDeck() error {
+	pdCfg := readPilotDeckConfig()
+	if pdCfg == nil {
+		return fmt.Errorf("未找到 PilotDeck 配置")
+	}
+
+	// Merge with existing config to preserve project_path if set
+	if raw, err := os.ReadFile(GlobalConfigPath()); err == nil {
+		var existing TaskConfig
+		if err := yaml.Unmarshal(raw, &existing); err == nil {
+			if existing.PilotDeck.ProjectPath != "" {
+				pdCfg.PilotDeck.ProjectPath = existing.PilotDeck.ProjectPath
+			}
+		}
+	}
+
+	fmt.Printf("正在从 PilotDeck 刷新连接配置 (base_url: %s)...\n", pdCfg.PilotDeck.BaseURL)
+	return SaveGlobalConfig(pdCfg)
 }

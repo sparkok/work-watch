@@ -151,8 +151,8 @@ func ParseConfirmationResult(responseText string) *bool {
 	}
 	lower := strings.ToLower(strings.TrimSpace(responseText))
 	// Check for explicit success/failure keywords
-	successWords := []string{"成功", "success", "succeeded", "任务完成", "completed successfully", "all good"}
-	failureWords := []string{"失败", "fail", "failed", "failure", "任务失败", "error", "unable"}
+	successWords := []string{"成功", "存在", "success", "succeeded", "任务完成", "completed successfully", "all good"}
+	failureWords := []string{"失败", "不存在", "fail", "failed", "failure", "任务失败", "error", "unable"}
 
 	for _, w := range successWords {
 		if strings.Contains(lower, w) {
