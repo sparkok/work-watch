@@ -1,5 +1,7 @@
 # Work-Watch 使用手册
 
+> 依赖 [PilotDeck](https://github.com/OpenBMB/PilotDeck)，使用前请先启动 PilotDeck。
+
 Work-Watch 是一个任务监工工具，配合 PilotDeck 使用。它将预先编写好的任务指令逐一提交给 PilotDeck 执行，自动跟踪进度，并在任务完成后向 PilotDeck 确认结果。
 
 ## 快速开始

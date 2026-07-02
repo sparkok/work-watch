@@ -1,5 +1,9 @@
 # work-watch 快速引导
 
+> 依赖 [PilotDeck](https://github.com/OpenBMB/PilotDeck)，使用前请先启动 PilotDeck。
+>
+> 典型场景：由电脑高手配置好 PilotDeck，其他用户只需使用 work-watch 即可。
+
 **一个命令，批量驱动 PilotDeck AI 完成你的工作流。**
 
 手动给 AI 发请求、等回复、再发下一个……累不累？把你要干的活写成任务列表，`work-watch` 一个接一个帮你提交，你只需要收结果。

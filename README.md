@@ -1,26 +1,30 @@
 # work-watch
 
-一个命令行工具，用于批量驱动 PilotDeck AI Agent 执行多任务工作流。
+> Requires [PilotDeck](https://github.com/OpenBMB/PilotDeck) — make sure it's running first.
+>
+> Typical setup: a power user configures PilotDeck once; everyone else just runs work-watch.
 
-## 主要功能
+A command-line tool for batch-driving PilotDeck AI Agent through multi-job workflows.
 
-- **批量任务执行** — 启动多个任务，每个任务将配置中的 jobs 逐一提交给 PilotDeck AI 处理
-- **交互式菜单** — 无参数运行时进入菜单，可配置、运行、导出、查看状态、重置任务
-- **进度追踪** — 实时显示每个 job 的执行状态和会话 ID
-- **会话导出** — 支持 JSON / 报告 / 详细交互记录三种格式导出任务会话内容
-- **自动配置发现** — 首次运行自动从 PilotDeck 读取连接信息，无需手动填写
+## Features
 
-## 基本用法
+- **Batch execution** — runs multiple tasks, submitting each job to PilotDeck AI in sequence
+- **Interactive menu** — configure, run, export, check status, and reset tasks without memorizing commands
+- **Progress tracking** — real-time job status and session ID for each submission
+- **Session export** — JSON / Markdown report / full transcript in three export formats
+- **Auto-discovery** — reads PilotDeck connection info on first run, zero manual config
+
+## Usage
 
 ```
-work-watch                 # 交互式菜单
-work-watch <任务名>         # 直接运行指定任务
-work-watch config <任务名>  # 配置任务
-work-watch status          # 查看所有任务状态
-work-watch export <任务名>  # 导出任务会话（默认 JSON）
-work-watch reset <任务名>   # 重置任务会话
+work-watch                   # interactive menu
+work-watch <taskName>        # run a task directly
+work-watch config <taskName> # configure a task
+work-watch status            # view all task statuses
+work-watch export <taskName> # export session (default JSON)
+work-watch reset <taskName>  # reset task session
 ```
 
-## 配置
+## Configuration
 
-程序首次运行自动从 `~/.pilotdeck/` 读取 PilotDeck 连接信息生成 `config.yaml`。每个任务目录下有独立的 `task.yaml` 保存会话状态。
+On first run, PilotDeck connection info is auto-read from `~/.pilotdeck/` to generate `config.yaml`. Each task directory has its own `task.yaml` for session state.
