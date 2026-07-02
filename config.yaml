@@ -1,7 +1,0 @@
-pilotdeck:
-    base_url: ""
-    api_key: ck_9cea41f99fe9c71ad60f385f159c197da9eec72b14fcaee3a7ba464205f9a063
-    project_path: E:\program\my\my-ai\work-watch\working
-    retry_attempts: 0
-    retry_interval_sec: 0
-debug: false
