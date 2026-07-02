@@ -17,6 +17,7 @@ import (
 	"work-watch/internal/pilotdeck"
 	"work-watch/internal/task"
 )
+
 func startupHealthCheck() {
 	baseURL := task.DefaultBaseURL
 	if h, p := os.Getenv("HOST"), os.Getenv("PORT"); h != "" && p != "" {
@@ -80,6 +81,7 @@ func Run(args []string) int {
 	// Otherwise treat as task name (direct run)
 	return runTaskMode(subcommand)
 }
+
 // ===================== Interactive Menu =====================
 
 func runMenuMode() int {
@@ -115,6 +117,7 @@ func runMenuMode() int {
 		}
 	}
 }
+
 func menuConfig() {
 	tasks, _ := task.ListTasks()
 	if len(tasks) > 0 {
@@ -149,6 +152,7 @@ func menuConfig() {
 		runTaskMode(name)
 	}
 }
+
 func menuRun(wg *sync.WaitGroup) {
 	tasks, err := task.ListTasks()
 	if err != nil || len(tasks) == 0 {
@@ -337,7 +341,72 @@ func runTaskMode(taskName string) int {
 	}
 
 	fmt.Printf("\nTask completed in %s.\n", elapsed.Round(time.Second))
-	return 0
+
+	// ===== Post-task confirmation with PilotDeck =====
+	fmt.Println("正在向 PilotDeck 确认任务结果...")
+
+	// Reload config to get the session ID saved by runner
+	cfg, err = task.LoadConfig(taskDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to reload config: %v\n", err)
+	}
+
+	confirmed, confirmErr := confirmTaskOutcome(context.Background(), cfg)
+	if confirmErr != nil {
+		fmt.Fprintf(os.Stderr, "确认失败: %v\n", confirmErr)
+		return 1
+	}
+	if confirmed {
+		fmt.Println("✅ PilotDeck 确认: 任务成功完成。")
+		return 0
+	}
+	fmt.Fprintln(os.Stderr, "❌ PilotDeck 确认: 任务失败。")
+	return 1
+}
+
+// confirmTaskOutcome sends a confirmation message to PilotDeck and determines
+// success/failure. Retries up to 3 times if the response is unclear.
+// Returns true (success), false (failure), or error.
+func confirmTaskOutcome(ctx context.Context, cfg *task.TaskConfig) (bool, error) {
+	if cfg == nil || cfg.PilotDeck.BaseURL == "" {
+		return false, fmt.Errorf("PilotDeck 配置不完整")
+	}
+
+	baseURL := cfg.PilotDeck.BaseURL
+	apiKey := cfg.PilotDeck.APIKey
+	projectPath := cfg.PilotDeck.ProjectPath
+	sessionID := cfg.SessionID
+
+	confirmationMsg := "任务已全部完成，请确认任务是成功还是失败？请明确回答「成功」或「失败」。"
+
+	for attempt := 1; attempt <= 3; attempt++ {
+		resp, err := pilotdeck.SubmitMessage(ctx, baseURL, apiKey, projectPath, confirmationMsg, sessionID)
+		if err != nil {
+			return false, fmt.Errorf("第 %d 次询问失败: %w", attempt, err)
+		}
+
+		responseText := pilotdeck.ParseAgentResponseText(resp.RawResponse)
+		result := pilotdeck.ParseConfirmationResult(responseText)
+
+		if result != nil {
+			return *result, nil
+		}
+
+		fmt.Printf("  PilotDeck 状态不明确（第 %d 次/共 3 次），稍后重新询问...\n", attempt)
+		if responseText != "" {
+			displayStr := responseText
+			if len(displayStr) > 120 {
+				displayStr = displayStr[:120] + "..."
+			}
+			fmt.Printf("  响应内容: %s\n", displayStr)
+		}
+
+		if attempt < 3 {
+			time.Sleep(3 * time.Second)
+		}
+	}
+
+	return false, fmt.Errorf("经过 3 次询问，PilotDeck 仍无法确认任务状态，按失败处理")
 }
 
 // ===================== Config Mode =====================
@@ -396,7 +465,7 @@ func runExportMode(taskName, format string) int {
 	}
 
 	exportDir := filepath.Join(taskDir, "export")
-	if err := os.MkdirAll(exportDir, 0755); err != nil {
+	if err := os.MkdirAll(exportDir, 0o755); err != nil {
 		fmt.Fprintf(os.Stderr, "创建导出目录失败: %v\n", err)
 		return 1
 	}
@@ -417,7 +486,7 @@ func runExportMode(taskName, format string) int {
 		exportPath = filepath.Join(exportDir, fmt.Sprintf("session-%s-%s.json", cfg.SessionID, ts))
 	}
 
-	if err := os.WriteFile(exportPath, content, 0644); err != nil {
+	if err := os.WriteFile(exportPath, content, 0o644); err != nil {
 		fmt.Fprintf(os.Stderr, "写入导出文件失败: %v\n", err)
 		return 1
 	}
@@ -427,7 +496,6 @@ func runExportMode(taskName, format string) int {
 }
 
 // ===================== Formatters =====================
-
 
 type sessionMessage struct {
 	ID        string          `json:"id"`

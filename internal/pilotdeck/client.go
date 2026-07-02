@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 )
 
 // AgentRequest is the JSON body sent to POST /api/agent.
@@ -123,4 +124,57 @@ func FetchSessionMessages(ctx context.Context, baseURL, apiKey, sessionID, proje
 		return nil, fmt.Errorf("fetch messages: http %d: %s", resp.StatusCode, string(body))
 	}
 	return body, nil
+}
+
+// ParseAgentResponseText extracts the agent's response text from the raw JSON body.
+// Returns the first non-empty string found among common fields (response, message, result, text).
+func ParseAgentResponseText(raw []byte) string {
+	var data map[string]any
+	if err := json.Unmarshal(raw, &data); err != nil {
+		return ""
+	}
+	for _, key := range []string{"response", "message", "result", "text", "output"} {
+		if v, ok := data[key]; ok {
+			if s, ok := v.(string); ok && s != "" {
+				return s
+			}
+		}
+	}
+	return ""
+}
+
+// ParseConfirmationResult checks the response text for success/failure keywords.
+// Returns: true (success), false (failure), or nil (unclear).
+func ParseConfirmationResult(responseText string) *bool {
+	if responseText == "" {
+		return nil
+	}
+	lower := strings.ToLower(strings.TrimSpace(responseText))
+	// Check for explicit success/failure keywords
+	successWords := []string{"成功", "success", "succeeded", "任务完成", "completed successfully", "all good"}
+	failureWords := []string{"失败", "fail", "failed", "failure", "任务失败", "error", "unable"}
+
+	for _, w := range successWords {
+		if strings.Contains(lower, w) {
+			// Confirm not also containing failure words
+			hasFailure := false
+			for _, fw := range failureWords {
+				if strings.Contains(lower, fw) {
+					hasFailure = true
+					break
+				}
+			}
+			if !hasFailure {
+				v := true
+				return &v
+			}
+		}
+	}
+	for _, w := range failureWords {
+		if strings.Contains(lower, w) {
+			v := false
+			return &v
+		}
+	}
+	return nil
 }
