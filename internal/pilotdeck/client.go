@@ -9,6 +9,9 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
+
+	"github.com/gorilla/websocket"
 )
 
 // AgentRequest is the JSON body sent to POST /api/agent.
@@ -126,55 +129,63 @@ func FetchSessionMessages(ctx context.Context, baseURL, apiKey, sessionID, proje
 	return body, nil
 }
 
-// ParseAgentResponseText extracts the agent's response text from the raw JSON body.
-// Returns the first non-empty string found among common fields (response, message, result, text).
-func ParseAgentResponseText(raw []byte) string {
-	var data map[string]any
-	if err := json.Unmarshal(raw, &data); err != nil {
-		return ""
-	}
-	for _, key := range []string{"response", "message", "result", "text", "output"} {
-		if v, ok := data[key]; ok {
-			if s, ok := v.(string); ok && s != "" {
-				return s
-			}
-		}
-	}
-	return ""
+// SessionStatus is the WebSocket session-status response.
+type SessionStatus struct {
+	SessionID    string `json:"sessionId"`
+	IsProcessing bool   `json:"isProcessing"`
 }
 
-// ParseConfirmationResult checks the response text for success/failure keywords.
-// Returns: true (success), false (failure), or nil (unclear).
-func ParseConfirmationResult(responseText string) *bool {
-	if responseText == "" {
-		return nil
-	}
-	lower := strings.ToLower(strings.TrimSpace(responseText))
-	// Check for explicit success/failure keywords
-	successWords := []string{"成功", "存在", "success", "succeeded", "任务完成", "completed successfully", "all good"}
-	failureWords := []string{"失败", "不存在", "fail", "failed", "failure", "任务失败", "error", "unable"}
+// CheckSessionStatus polls PilotDeck WebSocket until the session stops processing.
+// Returns (SessionStatus, nil) when isProcessing becomes false, or (nil, error) on failure.
+// Max wait: 300s (5s poll interval).
+func CheckSessionStatus(ctx context.Context, baseURL, sessionID string) (*SessionStatus, error) {
+	wsURL := strings.Replace(baseURL, "http://", "ws://", 1)
+	wsURL = strings.Replace(wsURL, "https://", "wss://", 1)
+	wsURL = wsURL + "/ws"
 
-	for _, w := range successWords {
-		if strings.Contains(lower, w) {
-			// Confirm not also containing failure words
-			hasFailure := false
-			for _, fw := range failureWords {
-				if strings.Contains(lower, fw) {
-					hasFailure = true
-					break
-				}
+	deadline := time.Now().Add(300 * time.Second)
+
+	for {
+		if time.Now().After(deadline) {
+			return nil, fmt.Errorf("session %s still processing after 300s", sessionID)
+		}
+
+		conn, _, err := websocket.DefaultDialer.DialContext(ctx, wsURL, nil)
+		if err != nil {
+			return nil, fmt.Errorf("WebSocket 连接失败: %w", err)
+		}
+
+		req := map[string]any{
+			"type":                      "check-session-status",
+			"sessionId":                 sessionID,
+			"includeActiveTurnMessages": false,
+		}
+		if err := conn.WriteJSON(req); err != nil {
+			conn.Close()
+			return nil, fmt.Errorf("发送 WebSocket 请求失败: %w", err)
+		}
+
+		var status SessionStatus
+		err = conn.ReadJSON(&status)
+		conn.Close()
+		if err != nil {
+			// Network error on read — retry after delay
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(5 * time.Second):
 			}
-			if !hasFailure {
-				v := true
-				return &v
-			}
+			continue
+		}
+
+		if status.SessionID != "" && !status.IsProcessing {
+			return &status, nil
+		}
+
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(5 * time.Second):
 		}
 	}
-	for _, w := range failureWords {
-		if strings.Contains(lower, w) {
-			v := false
-			return &v
-		}
-	}
-	return nil
 }

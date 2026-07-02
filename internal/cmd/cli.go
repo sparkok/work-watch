@@ -217,6 +217,11 @@ func menuRun(wg *sync.WaitGroup) {
 		return
 	}
 
+	// Prevent re-running a task that already has an active session
+	if err := checkTaskNotRunning(context.Background(), cfg, taskDir); err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		return
+	}
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -371,6 +376,12 @@ func runTaskMode(taskName string) int {
 		return 0
 	}
 
+	// Prevent re-running a task that already has an active session
+	if err := checkTaskNotRunning(context.Background(), cfg, taskDir); err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		return 0
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Second)
 	defer cancel()
 
@@ -441,49 +452,73 @@ func runTaskMode(taskName string) int {
 	return 1
 }
 
-// confirmTaskOutcome sends a confirmation message to PilotDeck and determines
-// success/failure. Retries up to 3 times if the response is unclear.
+// confirmTaskOutcome waits for the PilotDeck session to finish processing via WebSocket,
+// then fetches messages to confirm success. Fails if no messages exist.
 // Returns true (success), false (failure), or error.
 func confirmTaskOutcome(ctx context.Context, cfg *task.TaskConfig) (bool, error) {
 	if cfg == nil || cfg.PilotDeck.BaseURL == "" {
 		return false, fmt.Errorf("PilotDeck 配置不完整")
 	}
-
-	baseURL := cfg.PilotDeck.BaseURL
-	apiKey := cfg.PilotDeck.APIKey
-	projectPath := cfg.PilotDeck.ProjectPath
 	sessionID := cfg.SessionID
-
-	confirmationMsg := "任务已全部完成，请确认任务是成功还是失败？请明确回答「成功」或「失败」。"
-
-	for attempt := 1; attempt <= 3; attempt++ {
-		resp, err := pilotdeck.SubmitMessage(ctx, baseURL, apiKey, projectPath, confirmationMsg, sessionID)
-		if err != nil {
-			return false, fmt.Errorf("第 %d 次询问失败: %w", attempt, err)
-		}
-
-		responseText := pilotdeck.ParseAgentResponseText(resp.RawResponse)
-		result := pilotdeck.ParseConfirmationResult(responseText)
-
-		if result != nil {
-			return *result, nil
-		}
-
-		fmt.Printf("  PilotDeck 状态不明确（第 %d 次/共 3 次），稍后重新询问...\n", attempt)
-		if responseText != "" {
-			displayStr := responseText
-			if len(displayStr) > 120 {
-				displayStr = displayStr[:120] + "..."
-			}
-			fmt.Printf("  响应内容: %s\n", displayStr)
-		}
-
-		if attempt < 3 {
-			time.Sleep(3 * time.Second)
-		}
+	if sessionID == "" {
+		return false, fmt.Errorf("没有任务会话记录，无法确认")
 	}
 
-	return false, fmt.Errorf("经过 3 次询问，PilotDeck 仍无法确认任务状态，按失败处理")
+	// 等待 isProcessing 变为 false
+	status, err := pilotdeck.CheckSessionStatus(ctx, cfg.PilotDeck.BaseURL, sessionID)
+	if err != nil {
+		return false, fmt.Errorf("检查会话状态失败: %w", err)
+	}
+	if status == nil {
+		return false, fmt.Errorf("会话状态未知")
+	}
+
+	// isProcessing=false 后，确认有消息即成功
+	messagesJSON, err := pilotdeck.FetchSessionMessages(ctx,
+		cfg.PilotDeck.BaseURL,
+		cfg.PilotDeck.APIKey,
+		sessionID,
+		cfg.PilotDeck.ProjectPath,
+	)
+	if err != nil {
+		return false, fmt.Errorf("获取会话消息失败: %w", err)
+	}
+	if len(messagesJSON) == 0 || string(messagesJSON) == `{"messages":null,"total":0}` {
+		return false, fmt.Errorf("会话无消息，按失败处理")
+	}
+
+	return true, nil
+}
+
+// checkTaskNotRunning prevents re-running a task that already has an active PilotDeck session.
+// Returns nil if safe to run, or an error describing why not.
+func checkTaskNotRunning(ctx context.Context, cfg *task.TaskConfig, taskDir string) error {
+	if cfg.SessionID == "" {
+		return nil // never started
+	}
+	next, err := task.NextIncomplete(taskDir)
+	if err != nil {
+		return fmt.Errorf("检查任务状态失败: %w", err)
+	}
+	if next == "" {
+		return nil // all jobs done, safe to proceed (will be confirmed)
+	}
+	// Session exists and there are incomplete jobs — check if still processing
+	if !checkServerHealth(cfg.PilotDeck.BaseURL) {
+		// Server unreachable, can't verify; warn but don't block
+		fmt.Fprintln(os.Stderr, "Warning: PilotDeck 服务不可达，无法确认会话状态。")
+		return nil
+	}
+	status, err := pilotdeck.CheckSessionStatus(ctx, cfg.PilotDeck.BaseURL, cfg.SessionID)
+	if err != nil {
+		// Network/timing error checking status — warn but don't block
+		fmt.Fprintf(os.Stderr, "Warning: 检查会话状态出错: %v\n", err)
+		return nil
+	}
+	if status != nil && status.IsProcessing {
+		return fmt.Errorf("任务正在执行中 (session: %s)，请等待完成后再试", cfg.SessionID)
+	}
+	return nil
 }
 
 // ===================== Config Mode =====================
@@ -819,6 +854,9 @@ func taskStatusLine(taskName string) string {
 
 	if cfg.SessionID != "" {
 		parts = append(parts, fmt.Sprintf("session: %s", cfg.SessionID))
+		if len(completed) < len(jobs) {
+			parts = append(parts, "执行中")
+		}
 	}
 	if cfg.Debug {
 		parts = append(parts, "debug")
