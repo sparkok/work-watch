@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,6 +11,9 @@ import (
 	"work-watch/internal/pilotdeck"
 	"work-watch/internal/task"
 )
+
+// ErrConnectionFailed is returned when PilotDeck is unreachable after all retries.
+var ErrConnectionFailed = errors.New("PilotDeck connection failed after retries")
 
 // RunOptions configures a task execution.
 type RunOptions struct {
@@ -51,20 +55,33 @@ func RunTask(ctx context.Context, opts *RunOptions) error {
 
 		fmt.Printf("Running job: %s\n", jobName)
 
-		// Submit
-		resp, err := pilotdeck.SubmitMessage(
-			ctx,
-			opts.Cfg.PilotDeck.BaseURL,
-			opts.Cfg.PilotDeck.APIKey,
-			opts.Cfg.PilotDeck.ProjectPath,
-			string(msg),
-			sessionID,
-		)
-		if err != nil {
-			// Log the failed attempt before returning error
-			_ = writeJobLog(opts.TaskDir, jobName, string(msg), nil, err.Error(), nil)
-
-			return fmt.Errorf("network error on %s: %w", jobName, err)
+		// Submit with retry (configurable attempts+interval, min 20s)
+		attempts := opts.Cfg.PilotDeck.RetryAttempts
+		intervalSec := opts.Cfg.PilotDeck.RetryIntervalSec
+		var resp *pilotdeck.AgentResponse
+		var lastErr error
+		for attempt := 1; attempt <= attempts; attempt++ {
+			resp, err = pilotdeck.SubmitMessage(
+				ctx,
+				opts.Cfg.PilotDeck.BaseURL,
+				opts.Cfg.PilotDeck.APIKey,
+				opts.Cfg.PilotDeck.ProjectPath,
+				string(msg),
+				sessionID,
+			)
+			if err == nil {
+				lastErr = nil
+				break
+			}
+			lastErr = err
+			fmt.Fprintf(os.Stderr, "  PilotDeck 连接失败（第 %d 次/共 %d 次）: %v\n", attempt, attempts, err)
+			if attempt < attempts {
+				time.Sleep(time.Duration(intervalSec) * time.Second)
+			}
+		}
+		if lastErr != nil {
+			_ = writeJobLog(opts.TaskDir, jobName, string(msg), nil, lastErr.Error(), nil)
+			return fmt.Errorf("%w: %w", ErrConnectionFailed, lastErr)
 		}
 		// Capture session ID from first job
 		if sessionID == "" && resp.SessionID != "" {

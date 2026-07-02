@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -358,6 +359,10 @@ func runTaskMode(taskName string) int {
 	})
 	elapsed := time.Since(start)
 
+	if errors.Is(err, jobs.ErrConnectionFailed) {
+		fmt.Fprintf(os.Stderr, "PilotDeck 连接失败（已重试，请检查服务状态后重新运行）。\n")
+		return 0
+	}
 	if err != nil {
 		if ctx.Err() != nil {
 			fmt.Fprintf(os.Stderr, "Stopped after %s.\n", elapsed.Round(time.Second))

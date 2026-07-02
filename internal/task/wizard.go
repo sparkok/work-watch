@@ -50,9 +50,11 @@ func ensureGlobalConfig() error {
 
 	cfg := &TaskConfig{
 		PilotDeck: PilotDeckConfig{
-			BaseURL:     baseURL,
-			APIKey:      apiKey,
-			ProjectPath: projectPath,
+			BaseURL:          baseURL,
+			APIKey:           apiKey,
+			ProjectPath:      projectPath,
+			RetryAttempts:    3,
+			RetryIntervalSec: 20,
 		},
 	}
 	return SaveGlobalConfig(cfg)
@@ -66,7 +68,7 @@ func CreateTaskWizard(taskName string) error {
 
 	taskDir := TaskDir(taskName)
 	for _, dir := range []string{taskDir, filepath.Join(taskDir, jobsDirName), filepath.Join(taskDir, logsDirName)} {
-		if err := os.MkdirAll(dir, 0755); err != nil {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return fmt.Errorf("create directory %s: %w", dir, err)
 		}
 	}

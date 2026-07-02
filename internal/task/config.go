@@ -34,9 +34,11 @@ type TaskConfig struct {
 
 // PilotDeckConfig holds server connection details.
 type PilotDeckConfig struct {
-	BaseURL     string `yaml:"base_url"`
-	APIKey      string `yaml:"api_key"`
-	ProjectPath string `yaml:"project_path"`
+	BaseURL          string `yaml:"base_url"`
+	APIKey           string `yaml:"api_key"`
+	ProjectPath      string `yaml:"project_path"`
+	RetryAttempts    int    `yaml:"retry_attempts"`
+	RetryIntervalSec int    `yaml:"retry_interval_sec"`
 }
 
 // taskYAML is the subset written to per-task task.yaml (no PilotDeck settings).
@@ -87,6 +89,14 @@ func applyDefaults(cfg *TaskConfig) {
 				cfg.PilotDeck.ProjectPath = cwd
 			}
 		}
+	}
+	if cfg.PilotDeck.RetryAttempts <= 0 {
+		cfg.PilotDeck.RetryAttempts = 3
+	}
+	if cfg.PilotDeck.RetryIntervalSec <= 0 {
+		cfg.PilotDeck.RetryIntervalSec = 20
+	} else if cfg.PilotDeck.RetryIntervalSec < 20 {
+		cfg.PilotDeck.RetryIntervalSec = 20
 	}
 }
 
