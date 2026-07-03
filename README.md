@@ -4,7 +4,7 @@
 >
 > Typical setup: a power user configures PilotDeck once; everyone else just runs work-watch.
 
-A command-line tool for batch-driving PilotDeck AI Agent through multi-job workflows.
+A command-line tool for batch-driving PilotDeck AI Agent through multi-job workflows. Users just write `*.txt` files under `tasks/<taskName>/jobs/` and run.
 
 ## Features
 

@@ -2,36 +2,51 @@
 
 > Requires [PilotDeck](https://github.com/OpenBMB/PilotDeck) — make sure it's running first.
 >
-> Typical setup: a power user configures PilotDeck once; everyone else just runs work-watch.
-
 **One command to batch-drive PilotDeck AI through your workflows.**
 
-Tired of manually sending requests to AI, waiting for replies, then sending the next one? Write your tasks as a job list, let `work-watch` submit them one by one, and just collect the results.
+Once a power user sets up PilotDeck, there's only one thing you need to do: **write task files, then run.**
 
 ## Three Steps
 
-1. **Configure** — list the jobs to execute
-2. **Run** — `work-watch <taskName>`
-3. **Collect** — grab a coffee and check the session records
+### 1. Write Task Files
+
+Create `*.txt` files under `tasks/<taskName>/jobs/` — one file per task you want the AI to handle:
+
+```
+tasks/my-task/jobs/
+├── 001_requirements.txt
+├── 002_design.txt
+└── 003_implementation.txt
+```
+
+Use numeric prefixes to control execution order. File content is plain text — your instruction to the AI.
+
+### 2. Run
+
+```
+work-watch my-task
+```
+
+The AI processes your txt files in order, with real-time progress display.
+
+### 3. Collect Results
+
+Export session records after completion:
+
+```
+work-watch export my-task        # JSON format
+work-watch export my-task report # Report format
+```
 
 ## Why Use It
 
-- **Zero config** — auto-discovers PilotDeck connection info, works out of the box
-- **Configure once, run repeatedly** — write task config once, reset session to re-run
-- **Progress at a glance** — real-time job status and session ID for each job
-- **Flexible export** — JSON for processing, Markdown reports for archiving, full transcripts for review
-- **Menu-driven** — forget commands? Just run `work-watch` for the interactive menu
-- **Resumable** — session state auto-saved; pick up where you left off
-
-## Quick Start
-
-```bash
-go build -o work-watch.exe
-work-watch                  # interactive menu
-work-watch myTask           # run a task directly
-work-watch export myTask    # export session records
-```
+- **You just write txt files** — put your tasks in files, work-watch handles the rest
+- **Zero config for you** — PilotDeck is set up once by a power user, ready to go
+- **Progress at a glance** — real-time status for every task
+- **Resumable** — pick up where you left off, no duplicated work
+- **Menu-driven** — forget commands? Just double-click `work-watch.exe`
 
 ---
 
-**Turn your repetitive work into a job list and let AI handle it.**
+**Turn what you don't want to do manually into txt files, and let AI handle it.**
+

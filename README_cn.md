@@ -4,7 +4,7 @@
 >
 > 典型场景：由电脑高手配置好 PilotDeck，其他用户只需使用 work-watch 即可。
 
-一个命令行工具，用于批量驱动 PilotDeck AI Agent 执行多任务工作流。
+一个命令行工具，用于批量驱动 PilotDeck AI Agent 执行多任务工作流。使用者只需在 `tasks/<任务名>/jobs/` 下写好 `*.txt` 文件，运行即可。
 
 ## 主要功能
 
