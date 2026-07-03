@@ -77,7 +77,18 @@ func CreateTaskWizard(taskName string) error {
 	debugStr := ReadLine()
 	debug := strings.EqualFold(debugStr, "y") || strings.EqualFold(debugStr, "yes")
 
-	cfg := &TaskConfig{Debug: debug}
+	fmt.Print("Task mode [continuous] (continuous/discrete): ")
+	modeStr := ReadLine()
+	mode := strings.TrimSpace(strings.ToLower(modeStr))
+	if mode == "" {
+		mode = "continuous"
+	}
+	if mode != "continuous" && mode != "discrete" {
+		fmt.Println("Invalid mode, defaulting to continuous.")
+		mode = "continuous"
+	}
+
+	cfg := &TaskConfig{Debug: debug, Mode: mode}
 	if err := SaveConfig(taskDir, cfg); err != nil {
 		return err
 	}

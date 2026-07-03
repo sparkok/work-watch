@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
 
@@ -99,7 +98,8 @@ func Run(args []string) int {
 // ===================== Interactive Menu =====================
 
 func runMenuMode() int {
-	var asyncWg sync.WaitGroup
+	menuCtx, menuCancel := context.WithCancel(context.Background())
+	defer menuCancel() // safety: cancel if menu exits by error/panic
 
 	for {
 		fmt.Println("\n========== Work-Watch 任务监工 ==========")
@@ -117,7 +117,7 @@ func runMenuMode() int {
 		case "1", "配置":
 			menuConfig()
 		case "2", "执行":
-			menuRun(&asyncWg)
+			menuRun(menuCtx)
 		case "3", "结果导出":
 			menuExport()
 		case "4", "状态":
@@ -125,8 +125,8 @@ func runMenuMode() int {
 		case "5", "重置":
 			menuReset()
 		case "6", "退出":
-			fmt.Println("等待异步任务完成...")
-			asyncWg.Wait()
+			menuCancel()
+			time.Sleep(500 * time.Millisecond)
 			fmt.Println("再见!")
 			return 0
 		default:
@@ -170,7 +170,7 @@ func menuConfig() {
 	}
 }
 
-func menuRun(wg *sync.WaitGroup) {
+func menuRun(menuCtx context.Context) {
 	tasks, err := task.ListTasks()
 	if err != nil || len(tasks) == 0 {
 		fmt.Println("没有可用的任务。请先创建任务。")
@@ -222,12 +222,10 @@ func menuRun(wg *sync.WaitGroup) {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		return
 	}
-	wg.Add(1)
 	go func() {
-		defer wg.Done()
 		fmt.Printf("\n▶ 开始异步执行任务: %s\n", taskName)
 
-		ctx, cancel := context.WithTimeout(context.Background(), 300*time.Second)
+		ctx, cancel := context.WithTimeout(menuCtx, 300*time.Second)
 		defer cancel()
 
 		sigCh := make(chan os.Signal, 1)
@@ -493,8 +491,19 @@ func confirmTaskOutcome(ctx context.Context, cfg *task.TaskConfig) (bool, error)
 // checkTaskNotRunning prevents re-running a task that is already executing.
 // The .running marker file is the authoritative signal; a stale marker (>1h)
 // is treated as crash recovery and removed.
+//
+// In discrete mode, each run is independent — always remove any stale .running
+// and proceed. In continuous mode, block re-run if another process holds the marker.
 // Returns nil if safe to run, or an error describing why not.
 func checkTaskNotRunning(ctx context.Context, cfg *task.TaskConfig, taskDir string) error {
+	// Discrete mode: always allow re-run — if .running exists, remove it and re-create.
+	if cfg.Mode == "discrete" {
+		_ = task.RemoveRunningMarker(taskDir)
+		_, err := task.TryAcquireRunningMarker(taskDir, "")
+		return err // nil if acquired, error only on I/O failure
+	}
+
+	// Continuous mode: atomically acquire; block if another process holds it.
 	acquired, err := task.TryAcquireRunningMarker(taskDir, cfg.SessionID)
 	if err != nil {
 		return fmt.Errorf("检查运行状态失败: %w", err)

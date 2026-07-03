@@ -30,6 +30,7 @@ type TaskConfig struct {
 	PilotDeck PilotDeckConfig `yaml:"pilotdeck"`
 	Debug     bool            `yaml:"debug"`
 	SessionID string          `yaml:"session_id,omitempty"`
+	Mode      string          `yaml:"mode,omitempty"`
 }
 
 // PilotDeckConfig holds server connection details.
@@ -45,6 +46,7 @@ type PilotDeckConfig struct {
 type taskYAML struct {
 	Debug     bool   `yaml:"debug"`
 	SessionID string `yaml:"session_id,omitempty"`
+	Mode      string `yaml:"mode,omitempty"`
 }
 
 // GlobalConfigPath returns the path to the global config.yaml.
@@ -105,6 +107,9 @@ func applyDefaults(cfg *TaskConfig) {
 	} else if cfg.PilotDeck.RetryIntervalSec < 20 {
 		cfg.PilotDeck.RetryIntervalSec = 20
 	}
+	if cfg.Mode == "" {
+		cfg.Mode = "continuous"
+	}
 }
 
 // LoadConfig reads global config.yaml (PilotDeck settings) and merges with
@@ -128,6 +133,7 @@ func LoadConfig(taskDir string) (*TaskConfig, error) {
 		if err := yaml.Unmarshal(raw, &task); err == nil {
 			cfg.Debug = task.Debug
 			cfg.SessionID = task.SessionID
+			cfg.Mode = task.Mode
 		}
 	}
 
@@ -146,6 +152,7 @@ func SaveConfig(taskDir string, cfg *TaskConfig) error {
 	task := taskYAML{
 		Debug:     cfg.Debug,
 		SessionID: cfg.SessionID,
+		Mode:      cfg.Mode,
 	}
 	raw, err := yaml.Marshal(&task)
 	if err != nil {

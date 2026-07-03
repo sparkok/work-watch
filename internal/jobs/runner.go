@@ -26,7 +26,7 @@ type RunOptions struct {
 // RunTask repeatedly executes the next incomplete job until all are done
 // or an error occurs.
 func RunTask(ctx context.Context, opts *RunOptions) error {
-	sessionID := ""
+	sessionID := opts.Cfg.SessionID
 	completed := 0
 
 	defer func() { _ = task.RemoveRunningMarker(opts.TaskDir) }()
@@ -56,6 +56,11 @@ func RunTask(ctx context.Context, opts *RunOptions) error {
 		}
 
 		fmt.Printf("Running job: %s\n", jobName)
+
+		// Discrete mode: each job gets a fresh PilotDeck session
+		if opts.Cfg.Mode == "discrete" {
+			sessionID = ""
+		}
 
 		// Submit with retry (configurable attempts+interval, min 20s)
 		attempts := opts.Cfg.PilotDeck.RetryAttempts
@@ -105,8 +110,8 @@ func RunTask(ctx context.Context, opts *RunOptions) error {
 			cancel()
 		}
 
-		// Save session ID to task config for later message retrieval
-		if sessionID != "" {
+		// Save session ID to task config for later message retrieval (continuous mode only)
+		if sessionID != "" && opts.Cfg.Mode != "discrete" {
 			if err := task.SaveSessionID(opts.TaskDir, sessionID); err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: failed to save session: %v\n", err)
 			}
