@@ -28,3 +28,14 @@ work-watch reset <taskName>  # reset task session
 ## Configuration
 
 On first run, PilotDeck connection info is auto-read from `~/.pilotdeck/` to generate `config.yaml`. Each task directory has its own `task.yaml` for session state.
+
+## Demo
+
+![menu](screen/1.png)
+![config](screen/2.png)
+![running](screen/3.png)
+![progress](screen/4.png)
+![completed](screen/5.png)
+![export](screen/6.png)
+![status](screen/7.png)
+![reset](screen/8.png)

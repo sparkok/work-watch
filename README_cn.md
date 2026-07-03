@@ -28,3 +28,39 @@ work-watch reset <任务名>   # 重置任务会话
 ## 配置
 
 程序首次运行自动从 `~/.pilotdeck/` 读取 PilotDeck 连接信息生成 `config.yaml`。每个任务目录下有独立的 `task.yaml` 保存会话状态。
+
+## 演示
+
+![完成](screen/5.png)
+
+
+
+![导出](screen/6.png)
+
+<img src="screen/1.png" alt="菜单" style="zoom:67%;" />
+
+
+
+<img src="screen/2.png" alt="配置" style="zoom:80%;" />
+
+
+
+![执行中](screen/3.png)
+
+
+
+![进度](screen/4.png)
+
+
+
+
+
+
+
+
+
+![状态](screen/7.png)
+
+
+
+![重置](screen/8.png)
