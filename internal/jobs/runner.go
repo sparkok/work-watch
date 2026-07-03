@@ -29,6 +29,8 @@ func RunTask(ctx context.Context, opts *RunOptions) error {
 	sessionID := ""
 	completed := 0
 
+	defer func() { _ = task.RemoveRunningMarker(opts.TaskDir) }()
+
 	for {
 		jobName, err := task.NextIncomplete(opts.TaskDir)
 		if err != nil {
@@ -86,6 +88,7 @@ func RunTask(ctx context.Context, opts *RunOptions) error {
 		// Capture session ID from first job
 		if sessionID == "" && resp.SessionID != "" {
 			sessionID = resp.SessionID
+			_ = task.WriteRunningMarker(opts.TaskDir, sessionID)
 		}
 
 		// Fetch full conversation messages after the job completes

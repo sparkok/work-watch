@@ -1,11 +1,13 @@
 package task
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -15,6 +17,90 @@ const (
 	jobsDirName    = "jobs"
 	logsDirName    = "logs"
 )
+
+// RunningMarker is written to .running when a task is executing.
+type RunningMarker struct {
+	SessionID string `json:"session_id"`
+	Started   string `json:"started"` // time.RFC3339
+}
+
+func runningMarkerPath(taskDir string) string {
+	return filepath.Join(taskDir, ".running")
+}
+
+// WriteRunningMarker creates or updates the .running marker.
+func WriteRunningMarker(taskDir, sessionID string) error {
+	marker := RunningMarker{
+		SessionID: sessionID,
+		Started:   time.Now().Format(time.RFC3339),
+	}
+	data, err := json.Marshal(marker)
+	if err != nil {
+		return fmt.Errorf("marshal running marker: %w", err)
+	}
+	path := runningMarkerPath(taskDir)
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		return fmt.Errorf("write running marker: %w", err)
+	}
+	return os.Rename(tmp, path)
+}
+
+// TryAcquireRunningMarker attempts to atomically create the .running marker
+// using O_CREATE|O_EXCL. Returns (true, nil) if we acquired it, (false, nil)
+// if another process already holds it, or (false, error) on I/O error.
+func TryAcquireRunningMarker(taskDir, sessionID string) (bool, error) {
+	path := runningMarkerPath(taskDir)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
+	if err != nil {
+		if os.IsExist(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	defer f.Close()
+
+	marker := RunningMarker{
+		SessionID: sessionID,
+		Started:   time.Now().Format(time.RFC3339),
+	}
+	data, err := json.Marshal(marker)
+	if err != nil {
+		os.Remove(path)
+		return false, fmt.Errorf("marshal running marker: %w", err)
+	}
+	if _, err := f.Write(data); err != nil {
+		os.Remove(path)
+		return false, fmt.Errorf("write running marker: %w", err)
+	}
+	return true, nil
+}
+
+// ReadRunningMarker reads the .running marker. Returns nil if file doesn't exist.
+func ReadRunningMarker(taskDir string) (*RunningMarker, error) {
+	path := runningMarkerPath(taskDir)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var marker RunningMarker
+	if err := json.Unmarshal(data, &marker); err != nil {
+		return nil, fmt.Errorf("unmarshal running marker: %w", err)
+	}
+	return &marker, nil
+}
+
+// RemoveRunningMarker deletes the .running marker. No error if missing.
+func RemoveRunningMarker(taskDir string) error {
+	err := os.Remove(runningMarkerPath(taskDir))
+	if os.IsNotExist(err) {
+		return nil
+	}
+	return err
+}
 
 // TasksDir is the global tasks root directory.
 var TasksDir = "tasks"
@@ -175,6 +261,9 @@ func ResetTask(taskDir string) error {
 	if err := os.Remove(statusPath(taskDir)); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("remove status: %w", err)
 	}
+
+	// Remove running marker
+	_ = RemoveRunningMarker(taskDir)
 
 	// Clear session_id in task.yaml
 	cfg, err := LoadConfig(taskDir)

@@ -490,35 +490,52 @@ func confirmTaskOutcome(ctx context.Context, cfg *task.TaskConfig) (bool, error)
 	return true, nil
 }
 
-// checkTaskNotRunning prevents re-running a task that already has an active PilotDeck session.
+// checkTaskNotRunning prevents re-running a task that is already executing.
+// The .running marker file is the authoritative signal; a stale marker (>1h)
+// is treated as crash recovery and removed.
 // Returns nil if safe to run, or an error describing why not.
 func checkTaskNotRunning(ctx context.Context, cfg *task.TaskConfig, taskDir string) error {
-	if cfg.SessionID == "" {
-		return nil // never started
-	}
-	next, err := task.NextIncomplete(taskDir)
+	acquired, err := task.TryAcquireRunningMarker(taskDir, cfg.SessionID)
 	if err != nil {
-		return fmt.Errorf("检查任务状态失败: %w", err)
+		return fmt.Errorf("检查运行状态失败: %w", err)
 	}
-	if next == "" {
-		return nil // all jobs done, safe to proceed (will be confirmed)
-	}
-	// Session exists and there are incomplete jobs — check if still processing
-	if !checkServerHealth(cfg.PilotDeck.BaseURL) {
-		// Server unreachable, can't verify; warn but don't block
-		fmt.Fprintln(os.Stderr, "Warning: PilotDeck 服务不可达，无法确认会话状态。")
+	if acquired {
 		return nil
 	}
-	status, err := pilotdeck.CheckSessionStatus(ctx, cfg.PilotDeck.BaseURL, cfg.SessionID)
+
+	// Someone else holds the marker — read it for staleness check
+	marker, err := task.ReadRunningMarker(taskDir)
 	if err != nil {
-		// Network/timing error checking status — warn but don't block
-		fmt.Fprintf(os.Stderr, "Warning: 检查会话状态出错: %v\n", err)
+		return fmt.Errorf("检查运行状态失败: %w", err)
+	}
+	if marker == nil {
+		// Vanished between acquire-fail and read — race, but safe to proceed
 		return nil
 	}
-	if status != nil && status.IsProcessing {
-		return fmt.Errorf("任务正在执行中 (session: %s)，请等待完成后再试", cfg.SessionID)
+
+	// Staleness check: crash recovery after 1 hour
+	started, err := time.Parse(time.RFC3339, marker.Started)
+	if err == nil && time.Since(started) > 1*time.Hour {
+		fmt.Fprintln(os.Stderr, "Warning: .running marker is stale (>1h), removing it.")
+		_ = task.RemoveRunningMarker(taskDir)
+		acquired, err := task.TryAcquireRunningMarker(taskDir, cfg.SessionID)
+		if err != nil {
+			return fmt.Errorf("检查运行状态失败: %w", err)
+		}
+		if acquired {
+			return nil
+		}
+		// Couldn't re-acquire — someone else grabbed it, block
 	}
-	return nil
+
+	sid := marker.SessionID
+	if sid == "" {
+		sid = cfg.SessionID
+	}
+	if sid == "" {
+		return fmt.Errorf("任务正在执行中，请等待完成后再试")
+	}
+	return fmt.Errorf("任务正在执行中 (session: %s)，请等待完成后再试", sid)
 }
 
 // ===================== Config Mode =====================
