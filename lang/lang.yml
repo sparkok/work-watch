@@ -1,0 +1,7 @@
+languages:
+    en:
+        label: English
+        file: en.yml
+    zh:
+        label: 中文
+        file: zh.yml

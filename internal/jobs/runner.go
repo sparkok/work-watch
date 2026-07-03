@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"work-watch/internal/i18n"
 	"work-watch/internal/pilotdeck"
 	"work-watch/internal/task"
 )
@@ -40,9 +41,9 @@ func RunTask(ctx context.Context, opts *RunOptions) error {
 			if completed == 0 {
 				done, _ := task.CompletedJobs(opts.TaskDir)
 				if len(done) > 0 {
-					fmt.Printf("All %d job(s) already completed. To re-run, delete the status file.\n", len(done))
+					fmt.Printf(i18n.T("run.jobs_completed"), len(done))
 				} else {
-					fmt.Printf("No job files found in jobs/ directory.\n")
+					fmt.Print(i18n.T("run.no_job_files"))
 				}
 			}
 			return nil
@@ -55,7 +56,7 @@ func RunTask(ctx context.Context, opts *RunOptions) error {
 			return fmt.Errorf("read job %s: %w", jobName, err)
 		}
 
-		fmt.Printf("Running job: %s\n", jobName)
+		fmt.Printf(i18n.T("run.running"), jobName)
 
 		// Discrete mode: each job gets a fresh PilotDeck session
 		if opts.Cfg.Mode == "discrete" {
@@ -81,7 +82,7 @@ func RunTask(ctx context.Context, opts *RunOptions) error {
 				break
 			}
 			lastErr = err
-			fmt.Fprintf(os.Stderr, "  PilotDeck 连接失败（第 %d 次/共 %d 次）: %v\n", attempt, attempts, err)
+			fmt.Fprintf(os.Stderr, i18n.T("run.retry"), attempt, attempts, err)
 			if attempt < attempts {
 				time.Sleep(time.Duration(intervalSec) * time.Second)
 			}
@@ -113,7 +114,7 @@ func RunTask(ctx context.Context, opts *RunOptions) error {
 		// Save session ID to task config for later message retrieval (continuous mode only)
 		if sessionID != "" && opts.Cfg.Mode != "discrete" {
 			if err := task.SaveSessionID(opts.TaskDir, sessionID); err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: failed to save session: %v\n", err)
+				fmt.Fprintf(os.Stderr, i18n.T("run.warning_session"), err)
 			}
 		}
 

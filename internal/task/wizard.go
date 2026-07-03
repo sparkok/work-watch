@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"work-watch/internal/i18n"
 )
 
 // ensureGlobalConfig checks if config.yaml exists; if not, interactively creates it.
@@ -13,7 +15,7 @@ func ensureGlobalConfig() error {
 		return nil
 	}
 
-	fmt.Println("No global config.yaml found. Let's set up PilotDeck connection.")
+	fmt.Println(i18n.T("wizard.prompt_title"))
 
 	defaultProjectPath := os.Getenv(envProjectPath)
 	if defaultProjectPath == "" {
@@ -21,16 +23,16 @@ func ensureGlobalConfig() error {
 			defaultProjectPath = filepath.Join(cwd, "working")
 		}
 	}
-	fmt.Printf("Project path [%s]: ", defaultProjectPath)
+	fmt.Printf(i18n.T("wizard.prompt_project"), defaultProjectPath)
 	projectPath := ReadLine()
 	if projectPath == "" {
 		projectPath = defaultProjectPath
 	}
 
-	fmt.Print("API key (optional): ")
+	fmt.Print(i18n.T("wizard.prompt_apikey"))
 	apiKey := ReadLine()
 	if apiKey == "" {
-		fmt.Println("  (no API key will be sent)")
+		fmt.Println(i18n.T("wizard.prompt_apikey_note"))
 	}
 
 	host := os.Getenv(envHost)
@@ -42,7 +44,7 @@ func ensureGlobalConfig() error {
 	if defaultBase == "" {
 		defaultBase = "http://localhost:3001"
 	}
-	fmt.Printf("Base URL [%s]: ", defaultBase)
+	fmt.Printf(i18n.T("wizard.prompt_baseurl"), defaultBase)
 	baseURL := ReadLine()
 	if baseURL == "" {
 		baseURL = defaultBase

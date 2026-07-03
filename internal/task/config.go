@@ -31,6 +31,7 @@ type TaskConfig struct {
 	Debug     bool            `yaml:"debug"`
 	SessionID string          `yaml:"session_id,omitempty"`
 	Mode      string          `yaml:"mode,omitempty"`
+	Lang      string          `yaml:"lang,omitempty"`
 }
 
 // PilotDeckConfig holds server connection details.
@@ -198,6 +199,20 @@ func SaveSessionID(taskDir, sessionID string) error {
 func HasGlobalConfig() bool {
 	_, err := os.Stat(GlobalConfigPath())
 	return err == nil
+}
+
+// LoadGlobalConfig reads only the global config.yaml (PilotDeck settings + top-level fields).
+func LoadGlobalConfig() (*TaskConfig, error) {
+	path := GlobalConfigPath()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var cfg TaskConfig
+	if err := yaml.Unmarshal(raw, &cfg); err != nil {
+		return nil, err
+	}
+	return &cfg, nil
 }
 
 // pilotDeckHome returns the path to the PilotDeck configuration directory.

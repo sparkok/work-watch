@@ -5,3 +5,4 @@ pilotdeck:
     retry_attempts: 0
     retry_interval_sec: 0
 debug: false
+lang: en

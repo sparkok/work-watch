@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"work-watch/internal/i18n"
 	"work-watch/internal/jobs"
 	"work-watch/internal/pilotdeck"
 	"work-watch/internal/task"
@@ -28,9 +29,9 @@ func startupHealthCheck() {
 		}
 	}
 	if checkServerHealth(baseURL) {
-		fmt.Printf("✓ PilotDeck %s is healthy\n", baseURL)
+		fmt.Printf(i18n.T("health.check"), baseURL)
 	} else {
-		fmt.Fprintf(os.Stderr, "✗ PilotDeck %s is unreachable\n", baseURL)
+		fmt.Fprintf(os.Stderr, i18n.T("health.unreachable"), baseURL)
 	}
 }
 
@@ -43,9 +44,17 @@ func Run(args []string) int {
 		task.AppDir = cwd
 	}
 
+	// Initialize i18n
+	_ = i18n.Init(task.AppDir)
+
 	// Initialize/refresh global config from PilotDeck settings
 	if err := task.InitGlobalConfig(); err != nil {
-		fmt.Fprintf(os.Stderr, "自动初始化配置失败: %v\n", err)
+		fmt.Fprintf(os.Stderr, i18n.T("error.init_config"), err)
+	}
+
+	// Apply configured language, if any
+	if gc, err := task.LoadGlobalConfig(); err == nil && gc.Lang != "" {
+		_ = i18n.SetLang(gc.Lang)
 	}
 
 	startupHealthCheck()
@@ -85,7 +94,7 @@ func Run(args []string) int {
 
 	if subcommand == "reset" {
 		if len(args) < 2 {
-			fmt.Fprintln(os.Stderr, "用法: work-watch reset <任务名>")
+			fmt.Fprintln(os.Stderr, i18n.T("error.not_exist"))
 			return 1
 		}
 		return runResetMode(args[1])
@@ -102,14 +111,15 @@ func runMenuMode() int {
 	defer menuCancel() // safety: cancel if menu exits by error/panic
 
 	for {
-		fmt.Println("\n========== Work-Watch 任务监工 ==========")
-		fmt.Println(" 1. 配置    — 创建或修改任务配置")
-		fmt.Println(" 2. 执行    — 执行任务 (异步)")
-		fmt.Println(" 3. 结果导出 — 导出任务会话记录")
-		fmt.Println(" 4. 状态    — 查看任务状态")
-		fmt.Println(" 5. 重置    — 将任务恢复为初始未执行状态")
-		fmt.Println(" 6. 退出")
-		fmt.Print("\n请选择 (1-6): ")
+		fmt.Println(i18n.T("menu.title"))
+		fmt.Println(i18n.T("menu.option.config"))
+		fmt.Println(i18n.T("menu.option.run"))
+		fmt.Println(i18n.T("menu.option.export"))
+		fmt.Println(i18n.T("menu.option.status"))
+		fmt.Println(i18n.T("menu.option.reset"))
+		fmt.Println(i18n.T("menu.option.lang"))
+		fmt.Println(i18n.T("menu.option.exit"))
+		fmt.Print(i18n.T("menu.prompt"))
 
 		input := task.ReadLine()
 
@@ -127,10 +137,12 @@ func runMenuMode() int {
 		case "6", "退出":
 			menuCancel()
 			time.Sleep(500 * time.Millisecond)
-			fmt.Println("再见!")
+			fmt.Println(i18n.T("menu.option.goodbye"))
 			return 0
+		case "7", "语言":
+			menuLanguage()
 		default:
-			fmt.Println("无效选择，请重新输入。")
+			fmt.Println(i18n.T("menu.option.invalid"))
 		}
 	}
 }
@@ -138,12 +150,12 @@ func runMenuMode() int {
 func menuConfig() {
 	tasks, _ := task.ListTasks()
 	if len(tasks) > 0 {
-		fmt.Println("\n--- 已有任务 ---")
+		fmt.Println(i18n.T("config.select.title"))
 		for i, t := range tasks {
 			fmt.Printf("  %d. %s\n", i+1, t)
 		}
-		fmt.Printf("  %d. 创建新任务\n", len(tasks)+1)
-		fmt.Print("\n选择任务进行配置, 或创建新任务: ")
+		fmt.Printf(i18n.T("config.select.create_new"), len(tasks)+1)
+		fmt.Print(i18n.T("config.select.prompt"))
 
 		input := task.ReadLine()
 
@@ -163,7 +175,7 @@ func menuConfig() {
 		}
 	}
 
-	fmt.Print("\n输入新任务名称: ")
+	fmt.Print(i18n.T("config.select.create_prompt"))
 	name := task.ReadLine()
 	if name != "" {
 		runTaskMode(name)
@@ -173,27 +185,27 @@ func menuConfig() {
 func menuRun(menuCtx context.Context) {
 	tasks, err := task.ListTasks()
 	if err != nil || len(tasks) == 0 {
-		fmt.Println("没有可用的任务。请先创建任务。")
+		fmt.Println(i18n.T("task.no_tasks"))
 		return
 	}
 
-	fmt.Println("\n--- 选择要执行的任务 ---")
+	fmt.Println(i18n.T("task.select.title"))
 	for i, t := range tasks {
 		statusLine := taskStatusLine(t)
 		fmt.Printf("  %d. %s %s\n", i+1, t, statusLine)
 	}
 
-	fmt.Print("\n选择任务: ")
+	fmt.Print(i18n.T("task.select.prompt"))
 	taskName := chooseTask(tasks)
 	if taskName == "" {
-		fmt.Println("无效选择。")
+		fmt.Println(i18n.T("task.select.invalid"))
 		return
 	}
 
 	// Check if task config exists — if not, enter wizard
 	taskDir := task.TaskDir(taskName)
 	if _, err := os.Stat(task.ConfigPath(taskDir)); os.IsNotExist(err) {
-		fmt.Printf("Task %q needs configuration. Starting wizard...\n", taskName)
+		fmt.Printf(i18n.T("task.wizard_needed"), taskName)
 		if err := task.CreateTaskWizard(taskName); err != nil {
 			fmt.Fprintf(os.Stderr, "Wizard error: %v\n", err)
 			return
@@ -202,18 +214,18 @@ func menuRun(menuCtx context.Context) {
 
 		// Refresh global config from PilotDeck since user is starting fresh
 		if err := task.RefreshGlobalConfigFromPilotDeck(); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: 无法从 PilotDeck 刷新配置: %v\n", err)
-			fmt.Fprintln(os.Stderr, "请检查 PilotDeck 配置文件 (~/.pilotdeck/pilotdeck.yaml) 是否存在。")
+			fmt.Fprintf(os.Stderr, i18n.T("error.refresh"), err)
+			fmt.Fprintln(os.Stderr, i18n.T("error.refresh_hint"))
 		}
 	}
 
 	cfg, err := task.LoadConfig(taskDir)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "配置错误: %v\n", err)
+		fmt.Fprintf(os.Stderr, i18n.T("error.config_load"), err)
 		return
 	}
 	if !checkServerHealth(cfg.PilotDeck.BaseURL) {
-		fmt.Fprintf(os.Stderr, "PilotDeck 服务未启动 (%s)\n", cfg.PilotDeck.BaseURL)
+		fmt.Fprintf(os.Stderr, i18n.T("error.server_down"), cfg.PilotDeck.BaseURL)
 		return
 	}
 
@@ -223,7 +235,7 @@ func menuRun(menuCtx context.Context) {
 		return
 	}
 	go func() {
-		fmt.Printf("\n▶ 开始异步执行任务: %s\n", taskName)
+		fmt.Printf(i18n.T("task.starting"), taskName)
 
 		ctx, cancel := context.WithTimeout(menuCtx, 300*time.Second)
 		defer cancel()
@@ -232,7 +244,7 @@ func menuRun(menuCtx context.Context) {
 		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 		go func() {
 			<-sigCh
-			fmt.Println("\n任务被中断。已完成进度已保存。")
+			fmt.Println(i18n.T("task.interrupted"))
 			cancel()
 		}()
 
@@ -242,19 +254,19 @@ func menuRun(menuCtx context.Context) {
 			Debug:   cfg.Debug,
 			Cfg:     cfg,
 			OnJobDone: func(jobName string, resp *pilotdeck.AgentResponse) {
-				fmt.Printf("  ✓ %s (session: %s)\n", jobName, resp.SessionID)
+				fmt.Printf(i18n.T("task.job_done"), jobName, resp.SessionID)
 			},
 		})
 		elapsed := time.Since(start)
 
 		if err != nil {
 			if ctx.Err() != nil {
-				fmt.Printf("⏹ 任务 %s 已停止 (%s)\n", taskName, elapsed.Round(time.Second))
+				fmt.Printf(i18n.T("task.stopped"), taskName, elapsed.Round(time.Second))
 			} else {
-				fmt.Fprintf(os.Stderr, "✗ 任务 %s 失败: %v\n", taskName, err)
+				fmt.Fprintf(os.Stderr, i18n.T("task.failed"), taskName, err)
 			}
 		} else {
-			fmt.Printf("✓ 任务 %s 完成 (%s)\n", taskName, elapsed.Round(time.Second))
+			fmt.Printf(i18n.T("task.completed"), taskName, elapsed.Round(time.Second))
 		}
 	}()
 }
@@ -275,11 +287,11 @@ func chooseTask(tasks []string) string {
 func menuExport() {
 	tasks, err := task.ListTasks()
 	if err != nil || len(tasks) == 0 {
-		fmt.Println("没有可用的任务。")
+		fmt.Println(i18n.T("status.no_tasks_export"))
 		return
 	}
 
-	fmt.Println("\n--- 选择要导出结果的任务 ---")
+	fmt.Println(i18n.T("export.select.title"))
 	for i, t := range tasks {
 		taskDir := task.TaskDir(t)
 		cfg, _ := task.LoadConfig(taskDir)
@@ -290,18 +302,18 @@ func menuExport() {
 		fmt.Printf("  %d. %s%s\n", i+1, t, sid)
 	}
 
-	fmt.Print("\n选择任务: ")
+	fmt.Print(i18n.T("export.select.prompt"))
 	taskName := chooseTask(tasks)
 	if taskName == "" {
-		fmt.Println("无效选择。")
+		fmt.Println(i18n.T("export.select.invalid"))
 		return
 	}
 
-	fmt.Println("\n选择导出格式:")
-	fmt.Println("  1. JSON       — 机器可读，可用于分析")
-	fmt.Println("  2. 报告       — 简明报告，辅助决策")
-	fmt.Println("  3. 详细交互   — 完整交互过程，方便阅读")
-	fmt.Print("\n请选择 (1-3): ")
+	fmt.Println(i18n.T("export.format.title"))
+	fmt.Println(i18n.T("export.format.json"))
+	fmt.Println(i18n.T("export.format.report"))
+	fmt.Println(i18n.T("export.format.detail"))
+	fmt.Print(i18n.T("export.format.prompt"))
 
 	format := "json"
 	switch task.ReadLine() {
@@ -322,24 +334,57 @@ func menuStatus() {
 func menuReset() {
 	tasks, err := task.ListTasks()
 	if err != nil || len(tasks) == 0 {
-		fmt.Println("没有可用的任务。")
+		fmt.Println(i18n.T("status.no_tasks_export"))
 		return
 	}
 
-	fmt.Println("\n--- 选择要重置的任务 ---")
+	fmt.Println(i18n.T("reset.select.title"))
 	for i, t := range tasks {
 		statusLine := taskStatusLine(t)
 		fmt.Printf("  %d. %s %s\n", i+1, t, statusLine)
 	}
 
-	fmt.Print("\n选择任务: ")
+	fmt.Print(i18n.T("reset.select.prompt"))
 	taskName := chooseTask(tasks)
 	if taskName == "" {
-		fmt.Println("无效选择。")
+		fmt.Println(i18n.T("reset.select.invalid"))
 		return
 	}
 
 	runResetMode(taskName)
+}
+
+func menuLanguage() {
+	langs := i18n.Available()
+	fmt.Println(i18n.T("lang.title"))
+
+	codes := make([]string, 0, len(langs))
+	for code, entry := range langs {
+		codes = append(codes, code)
+		fmt.Printf("  %d. %s\n", len(codes), entry.Label)
+	}
+
+	fmt.Printf(i18n.T("lang.select.prompt"), len(codes))
+	input := task.ReadLine()
+	n, err := strconv.Atoi(input)
+	if err != nil || n < 1 || n > len(codes) {
+		fmt.Println(i18n.T("lang.invalid"))
+		return
+	}
+
+	code := codes[n-1]
+	if err := i18n.SetLang(code); err != nil {
+		fmt.Fprintf(os.Stderr, "Switch lang error: %v\n", err)
+		return
+	}
+
+	// Also persist to config.yaml
+	if gc, err := task.LoadGlobalConfig(); err == nil {
+		gc.Lang = code
+		_ = task.SaveGlobalConfig(gc)
+	}
+
+	fmt.Printf(i18n.T("lang.changed"), langs[code].Label)
 }
 
 // ===================== Task Execution =====================
@@ -349,7 +394,7 @@ func runTaskMode(taskName string) int {
 
 	// Check if task config exists — if not, enter wizard
 	if _, err := os.Stat(task.ConfigPath(taskDir)); os.IsNotExist(err) {
-		fmt.Printf("Task %q needs configuration. Starting wizard...\n", taskName)
+		fmt.Printf(i18n.T("task.wizard_needed"), taskName)
 		if err := task.CreateTaskWizard(taskName); err != nil {
 			fmt.Fprintf(os.Stderr, "Wizard error: %v\n", err)
 			return 1
@@ -358,19 +403,19 @@ func runTaskMode(taskName string) int {
 
 		// Refresh global config from PilotDeck since the user is starting fresh
 		if err := task.RefreshGlobalConfigFromPilotDeck(); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: 无法从 PilotDeck 刷新配置: %v\n", err)
-			fmt.Fprintln(os.Stderr, "请检查 PilotDeck 配置文件 (~/.pilotdeck/pilotdeck.yaml) 是否存在。")
+			fmt.Fprintf(os.Stderr, i18n.T("error.refresh"), err)
+			fmt.Fprintln(os.Stderr, i18n.T("error.refresh_hint"))
 		}
 	}
 
 	cfg, err := task.LoadConfig(taskDir)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Config error: %v\n", err)
+		fmt.Fprintf(os.Stderr, i18n.T("error.config_load_en"), err)
 		return 1
 	}
 
 	if !checkServerHealth(cfg.PilotDeck.BaseURL) {
-		fmt.Fprintf(os.Stderr, "PilotDeck 服务未启动 (%s)，请先启动服务再重试。\n", cfg.PilotDeck.BaseURL)
+		fmt.Fprintf(os.Stderr, i18n.T("error.server_down_retry"), cfg.PilotDeck.BaseURL)
 		return 0
 	}
 
@@ -387,7 +432,7 @@ func runTaskMode(taskName string) int {
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		<-sigCh
-		fmt.Println("\nInterrupted. Progress up to the last completed job has been saved.")
+		fmt.Println(i18n.T("task.interrupted"))
 		cancel()
 	}()
 
@@ -397,7 +442,7 @@ func runTaskMode(taskName string) int {
 		Debug:   cfg.Debug,
 		Cfg:     cfg,
 		OnJobDone: func(jobName string, resp *pilotdeck.AgentResponse) {
-			fmt.Printf("  ✓ %s (session: %s)\n", jobName, resp.SessionID)
+			fmt.Printf(i18n.T("task.job_done"), jobName, resp.SessionID)
 		},
 	})
 	elapsed := time.Since(start)
@@ -408,14 +453,14 @@ func runTaskMode(taskName string) int {
 	}
 	if err != nil {
 		if ctx.Err() != nil {
-			fmt.Fprintf(os.Stderr, "Stopped after %s.\n", elapsed.Round(time.Second))
+			fmt.Fprintf(os.Stderr, i18n.T("run.stopped_short"), elapsed.Round(time.Second))
 			return 0
 		}
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		return 1
 	}
 
-	fmt.Printf("\nTask completed in %s.\n", elapsed.Round(time.Second))
+	fmt.Printf(i18n.T("run.task_completed"), elapsed.Round(time.Second))
 
 	// Check if already confirmed in a previous run
 	alreadyConfirmed, checkErr := task.IsConfirmed(taskDir)
@@ -423,12 +468,12 @@ func runTaskMode(taskName string) int {
 		fmt.Fprintf(os.Stderr, "Warning: failed to check confirmation status: %v\n", checkErr)
 	}
 	if alreadyConfirmed {
-		fmt.Println("任务已被确认过，跳过确认步骤。")
+		fmt.Println(i18n.T("confirm.already"))
 		return 0
 	}
 
 	// ===== Post-task confirmation with PilotDeck =====
-	fmt.Println("正在向 PilotDeck 确认任务结果...")
+	fmt.Println(i18n.T("confirm.starting"))
 
 	// Reload config to get the session ID saved by runner
 	cfg, err = task.LoadConfig(taskDir)
@@ -438,15 +483,15 @@ func runTaskMode(taskName string) int {
 
 	confirmed, confirmErr := confirmTaskOutcome(context.Background(), cfg)
 	if confirmErr != nil {
-		fmt.Fprintf(os.Stderr, "确认失败: %v\n", confirmErr)
+		fmt.Fprintf(os.Stderr, i18n.T("confirm.failure"), confirmErr)
 		return 1
 	}
 	if confirmed {
 		_ = task.MarkConfirmed(taskDir)
-		fmt.Println("✅ PilotDeck 确认: 任务成功完成。")
+		fmt.Println(i18n.T("confirm.success"))
 		return 0
 	}
-	fmt.Fprintln(os.Stderr, "❌ PilotDeck 确认: 任务失败。")
+	fmt.Fprintln(os.Stderr, i18n.T("confirm.fail_outcome"))
 	return 1
 }
 
@@ -552,7 +597,7 @@ func checkTaskNotRunning(ctx context.Context, cfg *task.TaskConfig, taskDir stri
 func runConfigMode(taskName string) int {
 	taskDir := task.TaskDir(taskName)
 	if _, err := os.Stat(taskDir); os.IsNotExist(err) {
-		fmt.Printf("Task %q does not exist. Starting configuration wizard...\n", taskName)
+		fmt.Printf(i18n.T("error.not_exist_config"), taskName)
 		if err := task.CreateTaskWizard(taskName); err != nil {
 			fmt.Fprintf(os.Stderr, "Wizard error: %v\n", err)
 			return 1
@@ -562,15 +607,15 @@ func runConfigMode(taskName string) int {
 
 	cfg, err := task.LoadConfig(taskDir)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Config error: %v\n", err)
+		fmt.Fprintf(os.Stderr, i18n.T("error.config_load_en"), err)
 		return 1
 	}
 	if !checkServerHealth(cfg.PilotDeck.BaseURL) {
-		fmt.Fprintf(os.Stderr, "PilotDeck 服务未启动 (%s)，配置修改仍可继续。\n", cfg.PilotDeck.BaseURL)
+		fmt.Fprintf(os.Stderr, i18n.T("error.server_down_config"), cfg.PilotDeck.BaseURL)
 	}
 
 	if err := task.ReconfigureWizard(taskName); err != nil {
-		fmt.Fprintf(os.Stderr, "Config error: %v\n", err)
+		fmt.Fprintf(os.Stderr, i18n.T("error.config_load_en"), err)
 		return 1
 	}
 	return 0
@@ -581,42 +626,40 @@ func runConfigMode(taskName string) int {
 func runResetMode(taskName string) int {
 	taskDir := task.TaskDir(taskName)
 	if _, err := os.Stat(taskDir); os.IsNotExist(err) {
-		fmt.Fprintf(os.Stderr, "任务 %q 不存在。\n", taskName)
+		fmt.Fprintf(os.Stderr, i18n.T("error.not_exist"), taskName)
 		return 1
 	}
 
-	fmt.Printf("确定要重置任务 %q 吗？这将清除执行状态、日志和会话信息，但保留 job 定义文件。\n", taskName)
-	fmt.Print("输入 yes 确认重置: ")
+	fmt.Printf(i18n.T("reset.prompt"), taskName)
+	fmt.Print(i18n.T("reset.confirm"))
 	confirm := task.ReadLine()
 	if confirm != "yes" {
-		fmt.Println("已取消重置。")
+		fmt.Println(i18n.T("reset.cancelled"))
 		return 0
 	}
 
 	if err := task.ResetTask(taskDir); err != nil {
-		fmt.Fprintf(os.Stderr, "重置失败: %v\n", err)
+		fmt.Fprintf(os.Stderr, i18n.T("error.reset"), err)
 		return 1
 	}
 
-	fmt.Printf("✓ 任务 %q 已重置为初始状态。\n", taskName)
+	fmt.Printf(i18n.T("reset.success"), taskName)
 	return 0
 }
-
-// ===================== Export Mode =====================
 
 func runExportMode(taskName, format string) int {
 	taskDir := task.TaskDir(taskName)
 	cfg, err := task.LoadConfig(taskDir)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Config error: %v\n", err)
+		fmt.Fprintf(os.Stderr, i18n.T("error.config_load_en"), err)
 		return 1
 	}
 	if cfg.SessionID == "" {
-		fmt.Println("该任务还没有运行过，无会话记录可导出。")
+		fmt.Println(i18n.T("export.no_session"))
 		return 0
 	}
 
-	fmt.Printf("正在获取会话 %s 的消息...\n", cfg.SessionID)
+	fmt.Printf(i18n.T("export.fetching"), cfg.SessionID)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -624,13 +667,13 @@ func runExportMode(taskName, format string) int {
 		cfg.PilotDeck.BaseURL, cfg.PilotDeck.APIKey,
 		cfg.SessionID, cfg.PilotDeck.ProjectPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "获取消息失败: %v\n", err)
+		fmt.Fprintf(os.Stderr, i18n.T("error.fetch"), err)
 		return 1
 	}
 
 	exportDir := filepath.Join(taskDir, "export")
 	if err := os.MkdirAll(exportDir, 0o755); err != nil {
-		fmt.Fprintf(os.Stderr, "创建导出目录失败: %v\n", err)
+		fmt.Fprintf(os.Stderr, i18n.T("error.export_dir"), err)
 		return 1
 	}
 
@@ -651,11 +694,11 @@ func runExportMode(taskName, format string) int {
 	}
 
 	if err := os.WriteFile(exportPath, content, 0o644); err != nil {
-		fmt.Fprintf(os.Stderr, "写入导出文件失败: %v\n", err)
+		fmt.Fprintf(os.Stderr, i18n.T("error.export_file"), err)
 		return 1
 	}
 
-	fmt.Printf("✓ 结果已导出到 %s\n", exportPath)
+	fmt.Printf(i18n.T("export.success"), exportPath)
 	return 0
 }
 
@@ -849,11 +892,11 @@ func runStatusMode() int {
 		return 1
 	}
 	if len(tasks) == 0 {
-		fmt.Println("没有任务。")
+		fmt.Println(i18n.T("status.no_tasks"))
 		return 0
 	}
 
-	fmt.Println("\n--- 任务状态 ---")
+	fmt.Println(i18n.T("status.title"))
 	for _, t := range tasks {
 		statusLine := taskStatusLine(t)
 		fmt.Printf("  %s %s\n", t, statusLine)
@@ -866,12 +909,12 @@ func taskStatusLine(taskName string) string {
 
 	// Check if task config file exists
 	if _, err := os.Stat(task.ConfigPath(taskDir)); os.IsNotExist(err) {
-		return "(未配置)"
+		return i18n.T("status.unconfigured")
 	}
 
 	cfg, err := task.LoadConfig(taskDir)
 	if err != nil {
-		return "(配置错误: " + err.Error() + ")"
+		return fmt.Sprintf(i18n.T("status.config_error"), err.Error())
 	}
 
 	completed, _ := task.CompletedJobs(taskDir)
@@ -881,7 +924,7 @@ func taskStatusLine(taskName string) string {
 	if cfg.SessionID != "" {
 		parts = append(parts, fmt.Sprintf("session: %s", cfg.SessionID))
 		if len(completed) < len(jobs) {
-			parts = append(parts, "执行中")
+			parts = append(parts, i18n.T("status.running"))
 		}
 	}
 	if cfg.Debug {
