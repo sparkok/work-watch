@@ -22,6 +22,7 @@ type RunOptions struct {
 	Debug     bool
 	Cfg       *task.TaskConfig
 	OnJobDone func(jobName string, resp *pilotdeck.AgentResponse)
+	Quiet     bool
 }
 
 // RunTask repeatedly executes the next incomplete job until all are done
@@ -41,9 +42,13 @@ func RunTask(ctx context.Context, opts *RunOptions) error {
 			if completed == 0 {
 				done, _ := task.CompletedJobs(opts.TaskDir)
 				if len(done) > 0 {
-					fmt.Printf(i18n.T("run.jobs_completed"), len(done))
+					if !opts.Quiet {
+						fmt.Printf(i18n.T("run.jobs_completed"), len(done))
+					}
 				} else {
-					fmt.Print(i18n.T("run.no_job_files"))
+					if !opts.Quiet {
+						fmt.Print(i18n.T("run.no_job_files"))
+					}
 				}
 			}
 			return nil
@@ -56,7 +61,9 @@ func RunTask(ctx context.Context, opts *RunOptions) error {
 			return fmt.Errorf("read job %s: %w", jobName, err)
 		}
 
-		fmt.Printf(i18n.T("run.running"), jobName)
+		if !opts.Quiet {
+			fmt.Printf(i18n.T("run.running"), jobName)
+		}
 
 		// Discrete mode: each job gets a fresh PilotDeck session
 		if opts.Cfg.Mode == "discrete" {
@@ -82,7 +89,9 @@ func RunTask(ctx context.Context, opts *RunOptions) error {
 				break
 			}
 			lastErr = err
-			fmt.Fprintf(os.Stderr, i18n.T("run.retry"), attempt, attempts, err)
+			if !opts.Quiet {
+				fmt.Fprintf(os.Stderr, i18n.T("run.retry"), attempt, attempts, err)
+			}
 			if attempt < attempts {
 				time.Sleep(time.Duration(intervalSec) * time.Second)
 			}
@@ -114,7 +123,9 @@ func RunTask(ctx context.Context, opts *RunOptions) error {
 		// Save session ID to task config for later message retrieval (continuous mode only)
 		if sessionID != "" && opts.Cfg.Mode != "discrete" {
 			if err := task.SaveSessionID(opts.TaskDir, sessionID); err != nil {
-				fmt.Fprintf(os.Stderr, i18n.T("run.warning_session"), err)
+				if !opts.Quiet {
+					fmt.Fprintf(os.Stderr, i18n.T("run.warning_session"), err)
+				}
 			}
 		}
 

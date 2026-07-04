@@ -28,14 +28,14 @@ var (
 // When zh.yml exists on disk, it overrides the built-ins.
 var builtinZH = translations{
 	"menu.title":          "========== Work-Watch 任务监工 ==========",
-	"menu.option.config":  " 1. 配置    — 创建或修改任务配置",
-	"menu.option.run":     " 2. 执行    — 执行任务 (异步)",
-	"menu.option.export":  " 3. 结果导出 — 导出任务会话记录",
-	"menu.option.status":  " 4. 状态    — 查看任务状态",
-	"menu.option.reset":   " 5. 重置    — 将任务恢复为初始未执行状态",
-	"menu.option.lang":    " 7. 语言    — 切换显示语言",
-	"menu.option.exit":    " 6. 退出",
-	"menu.prompt":         "\n请选择 (1-7): ",
+	"menu.option.config":  " c. 配置    — 创建或修改任务配置",
+	"menu.option.run":     " r. 执行    — 执行任务 (异步)",
+	"menu.option.export":  " e. 结果导出 — 导出任务会话记录",
+	"menu.option.status":  " s. 状态    — 查看任务状态",
+	"menu.option.reset":   " t. 重置    — 将任务恢复为初始未执行状态",
+	"menu.option.lang":    " l. 语言    — 切换显示语言",
+	"menu.option.exit":    " q. 退出",
+	"menu.prompt":         "\n请选择 (c/r/e/s/t/l/q): ",
 	"menu.option.invalid": "无效选择，请重新输入。",
 	"menu.option.goodbye": "再见!",
 

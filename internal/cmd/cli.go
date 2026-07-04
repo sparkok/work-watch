@@ -19,6 +19,9 @@ import (
 	"work-watch/internal/task"
 )
 
+// staleMarkerThreshold is the age at which a .running marker is considered orphaned.
+const staleMarkerThreshold = 1 * time.Hour
+
 func startupHealthCheck() {
 	baseURL := task.DefaultBaseURL
 	if h, p := os.Getenv("HOST"), os.Getenv("PORT"); h != "" && p != "" {
@@ -58,6 +61,9 @@ func Run(args []string) int {
 	}
 
 	startupHealthCheck()
+
+	// Background auto-resume of any incomplete tasks from prior run
+	go autoCheckAndResume()
 
 	if len(args) == 0 {
 		return runMenuMode()
@@ -124,22 +130,22 @@ func runMenuMode() int {
 		input := task.ReadLine()
 
 		switch input {
-		case "1", "配置":
+		case "c":
 			menuConfig()
-		case "2", "执行":
+		case "r":
 			menuRun(menuCtx)
-		case "3", "结果导出":
+		case "e":
 			menuExport()
-		case "4", "状态":
+		case "s":
 			menuStatus()
-		case "5", "重置":
+		case "t":
 			menuReset()
-		case "6", "退出":
+		case "q":
 			menuCancel()
 			time.Sleep(500 * time.Millisecond)
 			fmt.Println(i18n.T("menu.option.goodbye"))
 			return 0
-		case "7", "语言":
+		case "l":
 			menuLanguage()
 		default:
 			fmt.Println(i18n.T("menu.option.invalid"))
@@ -165,12 +171,6 @@ func menuConfig() {
 				return
 			} else if n == len(tasks)+1 {
 				// fall through to create
-			}
-		}
-		for _, t := range tasks {
-			if strings.EqualFold(t, input) {
-				runConfigMode(t)
-				return
 			}
 		}
 	}
@@ -275,11 +275,6 @@ func chooseTask(tasks []string) string {
 	input := task.ReadLine()
 	if n, err := strconv.Atoi(input); err == nil && n >= 1 && n <= len(tasks) {
 		return tasks[n-1]
-	}
-	for _, t := range tasks {
-		if strings.EqualFold(t, input) {
-			return t
-		}
 	}
 	return ""
 }
@@ -580,7 +575,7 @@ func checkTaskNotRunning(ctx context.Context, cfg *task.TaskConfig, taskDir stri
 
 	// Staleness check: crash recovery after 1 hour
 	started, err := time.Parse(time.RFC3339, marker.Started)
-	if err == nil && time.Since(started) > 1*time.Hour {
+	if err == nil && time.Since(started) > staleMarkerThreshold {
 		fmt.Fprintln(os.Stderr, "Warning: .running marker is stale (>1h), removing it.")
 		_ = task.RemoveRunningMarker(taskDir)
 		acquired, err := task.TryAcquireRunningMarker(taskDir, cfg.SessionID)
@@ -936,7 +931,7 @@ func taskStatusLine(taskName string) string {
 	marker, _ := task.ReadRunningMarker(taskDir)
 	if marker != nil {
 		started, parseErr := time.Parse(time.RFC3339, marker.Started)
-		if parseErr == nil && time.Since(started) > 1*time.Hour {
+		if parseErr == nil && time.Since(started) > staleMarkerThreshold {
 			parts = append(parts, "⚠ 可能异常终止")
 		} else {
 			parts = append(parts, "▶ 执行中")
