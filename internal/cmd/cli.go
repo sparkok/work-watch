@@ -932,12 +932,19 @@ func taskStatusLine(taskName string) string {
 	jobs, _ := task.ListJobs(taskDir)
 	parts := []string{fmt.Sprintf("%d/%d jobs", len(completed), len(jobs))}
 
-	if cfg.SessionID != "" {
-		parts = append(parts, fmt.Sprintf("session: %s", cfg.SessionID))
-		if len(completed) < len(jobs) {
-			parts = append(parts, i18n.T("status.running"))
+	// .running marker is the authoritative signal for "currently executing"
+	marker, _ := task.ReadRunningMarker(taskDir)
+	if marker != nil {
+		started, parseErr := time.Parse(time.RFC3339, marker.Started)
+		if parseErr == nil && time.Since(started) > 1*time.Hour {
+			parts = append(parts, "⚠ 可能异常终止")
+		} else {
+			parts = append(parts, "▶ 执行中")
 		}
+	} else if cfg.SessionID != "" {
+		parts = append(parts, fmt.Sprintf("session: %s", cfg.SessionID))
 	}
+
 	if cfg.Debug {
 		parts = append(parts, "debug")
 	}
