@@ -283,3 +283,12 @@ func ResetTask(taskDir string) error {
 
 	return nil
 }
+
+// TaskLabel returns the display label for a task, falling back to the directory name.
+func TaskLabel(taskName string) string {
+	cfg, err := LoadConfig(TaskDir(taskName))
+	if err != nil || cfg.Label == "" {
+		return taskName
+	}
+	return cfg.Label
+}

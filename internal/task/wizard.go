@@ -90,7 +90,10 @@ func CreateTaskWizard(taskName string) error {
 		mode = "continuous"
 	}
 
-	cfg := &TaskConfig{Debug: debug, Mode: mode}
+	fmt.Print("Task label [optional]: ")
+	label := ReadLine()
+
+	cfg := &TaskConfig{Debug: debug, Mode: mode, Label: strings.TrimSpace(label)}
 	if err := SaveConfig(taskDir, cfg); err != nil {
 		return err
 	}
@@ -116,6 +119,12 @@ func ReconfigureWizard(taskName string) error {
 	debugStr := ReadLine()
 	if debugStr != "" {
 		cfg.Debug = strings.EqualFold(debugStr, "y") || strings.EqualFold(debugStr, "yes")
+	}
+
+	fmt.Printf("Task label [%s]: ", cfg.Label)
+	labelStr := ReadLine()
+	if labelStr != "" {
+		cfg.Label = strings.TrimSpace(labelStr)
 	}
 
 	if err := SaveConfig(taskDir, cfg); err != nil {

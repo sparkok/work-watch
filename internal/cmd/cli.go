@@ -152,7 +152,7 @@ func menuConfig() {
 	if len(tasks) > 0 {
 		fmt.Println(i18n.T("config.select.title"))
 		for i, t := range tasks {
-			fmt.Printf("  %d. %s\n", i+1, t)
+			fmt.Printf("  %d. %s\n", i+1, task.TaskLabel(t))
 		}
 		fmt.Printf(i18n.T("config.select.create_new"), len(tasks)+1)
 		fmt.Print(i18n.T("config.select.prompt"))
@@ -192,7 +192,7 @@ func menuRun(menuCtx context.Context) {
 	fmt.Println(i18n.T("task.select.title"))
 	for i, t := range tasks {
 		statusLine := taskStatusLine(t)
-		fmt.Printf("  %d. %s %s\n", i+1, t, statusLine)
+		fmt.Printf("  %d. %s %s\n", i+1, task.TaskLabel(t), statusLine)
 	}
 
 	fmt.Print(i18n.T("task.select.prompt"))
@@ -299,7 +299,7 @@ func menuExport() {
 		if cfg != nil && cfg.SessionID != "" {
 			sid = " (session: " + cfg.SessionID + ")"
 		}
-		fmt.Printf("  %d. %s%s\n", i+1, t, sid)
+		fmt.Printf("  %d. %s%s\n", i+1, task.TaskLabel(t), sid)
 	}
 
 	fmt.Print(i18n.T("export.select.prompt"))
@@ -341,7 +341,7 @@ func menuReset() {
 	fmt.Println(i18n.T("reset.select.title"))
 	for i, t := range tasks {
 		statusLine := taskStatusLine(t)
-		fmt.Printf("  %d. %s %s\n", i+1, t, statusLine)
+		fmt.Printf("  %d. %s %s\n", i+1, task.TaskLabel(t), statusLine)
 	}
 
 	fmt.Print(i18n.T("reset.select.prompt"))
@@ -910,7 +910,7 @@ func runStatusMode() int {
 	fmt.Println(i18n.T("status.title"))
 	for _, t := range tasks {
 		statusLine := taskStatusLine(t)
-		fmt.Printf("  %s %s\n", t, statusLine)
+		fmt.Printf("  %s %s\n", task.TaskLabel(t), statusLine)
 	}
 	return 0
 }

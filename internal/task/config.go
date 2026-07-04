@@ -32,6 +32,7 @@ type TaskConfig struct {
 	SessionID string          `yaml:"session_id,omitempty"`
 	Mode      string          `yaml:"mode,omitempty"`
 	Lang      string          `yaml:"lang,omitempty"`
+	Label     string          `yaml:"label,omitempty"`
 }
 
 // PilotDeckConfig holds server connection details.
@@ -48,6 +49,7 @@ type taskYAML struct {
 	Debug     bool   `yaml:"debug"`
 	SessionID string `yaml:"session_id,omitempty"`
 	Mode      string `yaml:"mode,omitempty"`
+	Label     string `yaml:"label,omitempty"`
 }
 
 // GlobalConfigPath returns the path to the global config.yaml.
@@ -135,6 +137,7 @@ func LoadConfig(taskDir string) (*TaskConfig, error) {
 			cfg.Debug = task.Debug
 			cfg.SessionID = task.SessionID
 			cfg.Mode = task.Mode
+			cfg.Label = task.Label
 		}
 	}
 
@@ -154,6 +157,7 @@ func SaveConfig(taskDir string, cfg *TaskConfig) error {
 		Debug:     cfg.Debug,
 		SessionID: cfg.SessionID,
 		Mode:      cfg.Mode,
+		Label:     cfg.Label,
 	}
 	raw, err := yaml.Marshal(&task)
 	if err != nil {
