@@ -496,7 +496,7 @@ func runTaskMode(taskName string) int {
 }
 
 // confirmTaskOutcome waits for the PilotDeck session to finish processing via WebSocket,
-// then fetches messages to confirm success. Fails if no messages exist.
+// then confirms the session exists in the project list with a staleness check.
 // Returns true (success), false (failure), or error.
 func confirmTaskOutcome(ctx context.Context, cfg *task.TaskConfig) (bool, error) {
 	if cfg == nil || cfg.PilotDeck.BaseURL == "" {
@@ -516,20 +516,31 @@ func confirmTaskOutcome(ctx context.Context, cfg *task.TaskConfig) (bool, error)
 		return false, fmt.Errorf("会话状态未知")
 	}
 
-	// isProcessing=false 后，确认有消息即成功
-	messagesJSON, err := pilotdeck.FetchSessionMessages(ctx,
-		cfg.PilotDeck.BaseURL,
-		cfg.PilotDeck.APIKey,
-		sessionID,
-		cfg.PilotDeck.ProjectPath,
-	)
+	// isProcessing=false 后，通过项目列表确认 session 存在且已过时效阈值
+	projects, err := pilotdeck.ListProjects(ctx, cfg.PilotDeck.BaseURL, cfg.PilotDeck.APIKey)
 	if err != nil {
-		return false, fmt.Errorf("获取会话消息失败: %w", err)
-	}
-	if len(messagesJSON) == 0 || string(messagesJSON) == `{"messages":null,"total":0}` {
-		return false, fmt.Errorf("会话无消息，按失败处理")
+		return false, fmt.Errorf("获取项目列表失败: %w", err)
 	}
 
+	// Build map[sessionID]SessionItem from all projects' sessions
+	sessionMap := make(map[string]pilotdeck.SessionItem)
+	for _, p := range projects {
+		for _, s := range p.Sessions {
+			sessionMap[s.ID] = s
+		}
+	}
+
+	// Look up session from map
+	session, ok := sessionMap[sessionID]
+	if !ok {
+		return false, nil // session not found in any project → failure
+	}
+
+	// 检查 lastActivity 是否超过 1 分钟，且服务正常（ListProjects 已成功）
+	lastActivity, err := time.Parse(time.RFC3339, session.LastActivity)
+	if err == nil && time.Since(lastActivity) < 1*time.Minute {
+		return false, nil // lastActivity 太新，说明可能还没真正结束
+	}
 	return true, nil
 }
 

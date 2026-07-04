@@ -129,6 +129,77 @@ func FetchSessionMessages(ctx context.Context, baseURL, apiKey, sessionID, proje
 	return body, nil
 }
 
+// ProjectInfo is the JSON structure returned by GET /api/projects.
+type ProjectInfo struct {
+	Name         string        `json:"name"`
+	DisplayName  string        `json:"displayName"`
+	FullPath     string        `json:"fullPath"`
+	Path         string        `json:"path"`
+	LastActivity int64         `json:"lastActivity,omitempty"`
+	Sessions     []SessionItem `json:"sessions"`
+	SessionMeta  SessionMeta   `json:"sessionMeta"`
+	Taskmaster   struct {
+		HasTaskmaster bool `json:"hasTaskmaster"`
+	} `json:"taskmaster"`
+	AlwaysOn struct {
+		Enabled bool `json:"enabled"`
+	} `json:"alwaysOn"`
+}
+
+// SessionItem is one session entry in the projects response.
+type SessionItem struct {
+	ID           string `json:"id"`
+	Title        string `json:"title"`
+	Summary      string `json:"summary"`
+	Name         string `json:"name"`
+	CreatedAt    string `json:"createdAt"`
+	Created_at   string `json:"created_at"`
+	Updated_at   string `json:"updated_at"`
+	LastActivity string `json:"lastActivity"`
+	MessageCount int    `json:"messageCount"`
+	Cwd          string `json:"cwd"`
+	FirstPrompt  string `json:"firstPrompt"`
+}
+
+// SessionMeta holds pagination info for sessions.
+type SessionMeta struct {
+	Total   int  `json:"total"`
+	HasMore bool `json:"hasMore"`
+}
+
+// ListProjects calls GET /api/projects and returns all projects with their sessions.
+func ListProjects(ctx context.Context, baseURL, apiKey string) ([]ProjectInfo, error) {
+	url := baseURL + "/api/projects"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create projects request: %w", err)
+	}
+	if apiKey != "" {
+		req.Header.Set("x-api-key", apiKey)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("list projects: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read projects: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("list projects: http %d: %s", resp.StatusCode, string(body))
+	}
+
+	// Response is always a JSON array (confirmed via live test)
+	var projects []ProjectInfo
+	if err := json.Unmarshal(body, &projects); err != nil {
+		return nil, fmt.Errorf("parse projects: %w", err)
+	}
+	return projects, nil
+}
+
 // SessionStatus is the WebSocket session-status response.
 type SessionStatus struct {
 	SessionID    string `json:"sessionId"`
