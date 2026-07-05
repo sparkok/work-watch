@@ -35,6 +35,14 @@ On first run, PilotDeck connection info is auto-read from `~/.pilotdeck/` to gen
 ![config](screen/2.png)
 ![running](screen/3.png)
 
+![running](screen/4.png)
 
+![running](screen/5.png)
 
+<img src="screen/6.png" alt="running" style="zoom:50%;" />
 
+<img src="screen/7.png" alt="running" style="zoom:50%;" />
+
+<img src="screen/8.png" alt="running" style="zoom:50%;" />
+
+![running](screen/9.png)
